@@ -1,0 +1,80 @@
+# Lorcana Wants
+
+Build a [Cardmarket](https://www.cardmarket.com) wants list for a Disney Lorcana set, minus the cards you already own.
+
+**→ [Use it here](https://5uperdan.github.io/lorcana-wants/)**
+
+## What it does
+
+Pick a set, say how many copies of each rarity you want, and get a list you can paste straight into Cardmarket under
+**Buying → My Wants → your list**. Upload a collection export and it subtracts what you already have, so the list is only what
+you still need.
+
+Card data comes from [Lorcast](https://lorcast.com), fetched live in your browser. New sets appear on their own — the site never
+needs updating for a release.
+
+Your collection file is read in the browser and never uploaded anywhere.
+
+## Collection format
+
+A Dreamborn CSV export. Four columns are used — `Set Number`, `Card Number`, `Variant`, `Count` — and the rest are ignored:
+
+```csv
+Set Number,Card Number,Variant,Count,Name,Color,Rarity
+005,135,normal,2,"Sugar Rush Speedway - Starting Line",Ruby,Rare
+005,32,foil,1,"Amber Chromicon",Amber,Uncommon
+```
+
+The page reports how many rows it read, how many match the set you picked, and how many did not. Some not matching is normal:
+promo cards use numbers like `2/P2` and belong to no numbered set.
+
+## Why one set at a time
+
+Cardmarket matches wants by card name, and the same name can appear in more than one set — *I'm Stuck!* is in both Rise of the
+Floodborn and Fabled. Generating one set per list means a reprint is never confused with the printing you meant.
+
+## Development
+
+The deployed site has no build step: GitHub Pages serves the source files as they are. The tooling below is for tests only and
+never reaches the browser.
+
+```bash
+npm install
+npx playwright install --with-deps chromium
+
+npm test                      # unit and DOM tests
+npm run test:watch            # watch mode
+npm run coverage              # with coverage thresholds
+npm run test:e2e              # browser smoke tests
+npm run test:e2e:ui           # the same, in Playwright's UI mode
+npm run test:contract         # really calls Lorcast
+
+python3 -m http.server 8000   # serve locally at http://localhost:8000
+```
+
+A `file://` URL will not work — ES modules need http.
+
+### How it is put together
+
+Dependencies are injected rather than reached for, which is what makes a frontend testable: `lorcast.js` takes a `fetch`,
+`app.js` takes a `document`, a `fetch` and a `clipboard`, and `main.js` is a three-line bootstrap that supplies the real ones.
+`sets`, `rarities`, `collection`, `wants` and `render` are pure functions and run without a DOM at all.
+
+### Three layers of test
+
+| Layer | Runner | Covers | Runs |
+|---|---|---|---|
+| Unit and DOM | Vitest + jsdom | Every module, including the wiring. Mounts the real `index.html`, so renaming an element id fails the suite rather than the page. | Every push and PR |
+| Browser smoke | Playwright, network stubbed | That the real page boots over HTTP and its main paths work — module loading, file upload, clipboard, keyboard access. | Every push and PR |
+| Contract | Playwright, live | That Lorcast still returns the fields the tool reads. Nothing else would notice a rename, because everything else stubs it. | Weekly, and on demand |
+
+The contract suite is kept off pull requests on purpose: it can fail for reasons that have nothing to do with the change being
+reviewed.
+
+## Not supported
+
+- Combining several sets into one list
+- Foil-specific wants — Cardmarket's paste format has no foil, language or condition column, so foils only affect what counts as
+  owned, never the output
+- Writing to Cardmarket directly. Their API supports wants lists, but access is
+  [restricted to professional sellers](https://apiv2.cardmarket.com/ws/documentation/API:Auth_Overview).

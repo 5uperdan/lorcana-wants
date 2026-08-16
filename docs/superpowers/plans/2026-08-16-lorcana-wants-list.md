@@ -1,5 +1,7 @@
 # Lorcana Wants List Generator Implementation Plan
 
+> **Superseded** by the web tool design. Kept for its Cardmarket API research, which still holds.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A non-interactive Python CLI that downloads Lorcana card data once and writes a Cardmarket paste-ready wants-list file for every set that doesn't already have one.

@@ -1,5 +1,7 @@
 # Cardmarket Wants List Generator — Design
 
+> **Superseded** by the web tool design. Kept for its Cardmarket API research, which still holds.
+
 **Date:** 2026-08-16
 **Status:** Approved for implementation
 **Scope:** Phase 1 (wants-list file generation). Phase 2 (pricing) is documented here as research, not as a commitment.
