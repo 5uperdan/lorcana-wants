@@ -2598,7 +2598,8 @@ it deliberately does not cover: the real Pages URL, and real Lorcast numbers. Ch
 1. The page loads over HTTPS with no console errors, and *Attack of the Vine! (2026)* is selected.
 2. The output reads `207 cards, 453 copies` and begins `3 Woody - Helping a Friend`. These are the figures verified against live
    data on 2026-08-16, so this checks the whole chain end to end.
-3. Setting Epic to 1 raises it to `225 cards, 471 copies`.
+3. Setting Epic to 1 raises the copies to `471` while the card count stays at `207`. Every Epic is an alternate printing
+   of a card already in the set, so it merges into an existing line rather than adding one.
 4. *Into the Inklands* produces exactly one `Dalmatian Puppy - Tail Wagger` line, quantity 5 — the merge behaviour against real
    data rather than a three-card fixture.
 5. Uploading your own collection export lowers the count and reports the rows read, with a plausible number skipped.

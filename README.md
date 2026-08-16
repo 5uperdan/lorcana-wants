@@ -28,6 +28,13 @@ Set Number,Card Number,Variant,Count,Name,Color,Rarity
 The page reports how many rows it read, how many match the set you picked, and how many did not. Some not matching is normal:
 promo cards use numbers like `2/P2` and belong to no numbered set.
 
+## Special rarities
+
+Epic, Enchanted and Iconic cards are alternate printings of cards already in the set — every one of Attack of the Vine!'s 18
+Epics shares its name and version with a regular printing. Since Cardmarket matches on name, asking for them adds copies to an
+existing line rather than adding a new one, and the paste format has no way to say which printing you want. They default to 0
+for that reason; pick those out by hand.
+
 ## Why one set at a time
 
 Cardmarket matches wants by card name, and the same name can appear in more than one set — *I'm Stuck!* is in both Rise of the
