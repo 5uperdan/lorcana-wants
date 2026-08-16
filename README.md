@@ -98,6 +98,9 @@ Dependencies are injected rather than reached for, which is what makes a fronten
 `app.js` takes a `document`, a `fetch` and a `clipboard`, and `main.js` is a three-line bootstrap that supplies the real ones.
 `sets`, `rarities`, `collection`, `wants` and `render` are pure functions and run without a DOM at all.
 
+Working on this? **[CLAUDE.md](CLAUDE.md)** has the manual checks worth doing, the real-data figures
+to expect, and the mistakes that have already caught people out.
+
 ### Three layers of test
 
 | Layer | Runner | Covers | Runs |
