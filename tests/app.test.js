@@ -53,6 +53,19 @@ function build(overrides = {}) {
   });
 }
 
+/** Type a quantity into a rarity box, the way a visitor would. */
+function setRarity(rarity, value) {
+  const input = document.querySelector(`#rarities input[data-rarity="${rarity}"]`);
+  input.value = String(value);
+  input.dispatchEvent(new Event("input"));
+}
+
+/** The quantities most tests need: everything starts at 0 now. */
+function wantTheUsual() {
+  setRarity("Rare", 3);
+  setRarity("Common", 1);
+}
+
 const output = () => document.getElementById("output").value;
 const summary = () => document.getElementById("summary").textContent;
 const statusOf = (id) => document.getElementById(id).textContent;
@@ -78,42 +91,64 @@ test("starting renders rarity inputs for the selected set only", async () => {
   expect(labels).toEqual(["Rare", "Common", "Enchanted"]);
 });
 
-test("starting produces a wants list from the defaults", async () => {
+test("nothing is wanted until a rarity is raised", async () => {
   await build().start();
+
+  expect(output()).toBe("");
+  expect(summary()).toMatch(/nothing wanted yet/i);
+});
+
+test("raising rarities builds the list", async () => {
+  await build().start();
+
+  wantTheUsual();
 
   expect(output()).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
   expect(summary()).toBe("2 cards, 4 copies.");
 });
 
-test("a rarity defaulting to zero is left out of the list", async () => {
+test("a rarity left at zero is absent from the list", async () => {
   await build().start();
+  wantTheUsual();
 
   expect(output()).not.toMatch(/Elsa/);
 });
 
-test("raising a rarity from zero adds its cards", async () => {
+test("raising a secret rarity adds its cards too", async () => {
   await build().start();
 
-  const enchanted = [...document.querySelectorAll("#rarities input")].at(-1);
-  enchanted.value = "1";
-  enchanted.dispatchEvent(new Event("input"));
+  setRarity("Enchanted", 1);
 
   expect(output()).toMatch(/1 Elsa - Spirit of Winter/);
 });
 
 test("choosing another set reloads its cards and its rarities", async () => {
   await build().start();
+  wantTheUsual();
 
   document.querySelectorAll("#sets input")[1].click();
-  await vi.waitFor(() => expect(output()).toBe("1 Someone Else"));
+  await vi.waitFor(() => expect(statusOf("sets-status")).toMatch(/1 cards/));
 
-  expect(statusOf("sets-status")).toMatch(/1 cards/);
+  expect(output()).toBe("1 Someone Else");
+});
+
+test("quantities typed for one set carry over to the next", async () => {
+  // Everything starts at zero, so resetting the form on every set change
+  // would mean retyping the same numbers to compare two sets.
+  await build().start();
+  wantTheUsual();
+
+  document.querySelectorAll("#sets input")[1].click();
+  await vi.waitFor(() => expect(statusOf("sets-status")).toMatch(/1 cards/));
+
+  expect(document.querySelector('#rarities input[data-rarity="Common"]').value).toBe("1");
 });
 
 test("loading a collection subtracts owned copies", async () => {
   const app = build();
   await app.start();
 
+  wantTheUsual();
   app.loadCollectionText(COLLECTION);
 
   // Three Woody wanted, one normal and one foil owned, so one left.
@@ -151,10 +186,11 @@ test("rows that could not be read at all are reported separately", async () => {
 test("the match count follows the selected set", async () => {
   const app = build();
   await app.start();
+  wantTheUsual();
   app.loadCollectionText(COLLECTION);
 
   document.querySelectorAll("#sets input")[1].click();
-  await vi.waitFor(() => expect(output()).toBe("1 Someone Else"));
+  await vi.waitFor(() => expect(statusOf("sets-status")).toMatch(/1 cards/));
 
   expect(statusOf("collection-status")).toMatch(/0 match this set/);
 });
@@ -162,6 +198,7 @@ test("the match count follows the selected set", async () => {
 test("unticking foils stops foil copies counting toward the target", async () => {
   const app = build();
   await app.start();
+  wantTheUsual();
   app.loadCollectionText(COLLECTION);
 
   const foils = document.getElementById("count-foils");
@@ -174,6 +211,7 @@ test("unticking foils stops foil copies counting toward the target", async () =>
 test("unticking both variants ignores the collection entirely", async () => {
   const app = build();
   await app.start();
+  wantTheUsual();
   app.loadCollectionText(COLLECTION);
 
   for (const id of ["count-normals", "count-foils"]) {
@@ -188,6 +226,7 @@ test("unticking both variants ignores the collection entirely", async () => {
 test("a collection for a different set changes nothing", async () => {
   const app = build();
   await app.start();
+  wantTheUsual();
 
   app.loadCollectionText("Set Number,Card Number,Variant,Count\n012,1,normal,4");
 
@@ -197,6 +236,7 @@ test("a collection for a different set changes nothing", async () => {
 test("a malformed collection reports the problem and keeps the previous list", async () => {
   const app = build();
   await app.start();
+  wantTheUsual();
   app.loadCollectionText(COLLECTION);
 
   app.loadCollectionText("Nonsense,Header\n1,2");
@@ -223,6 +263,7 @@ test("copying writes the output to the clipboard", async () => {
   const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
   const app = createApp({ document, fetchImpl: stubFetch(), clipboard });
   await app.start();
+  wantTheUsual();
 
   document.getElementById("copy").click();
   await vi.waitFor(() => expect(clipboard.writeText).toHaveBeenCalledOnce());

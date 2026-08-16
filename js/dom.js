@@ -3,7 +3,7 @@
  * reaching for a global, which is what makes these testable under jsdom.
  */
 
-import { defaultQuantityFor, rarityLabel } from "./rarities.js";
+import { DEFAULT_QUANTITY, rarityLabel } from "./rarities.js";
 import { setLabel } from "./sets.js";
 
 /** Radio buttons for the sets, with the first one selected. */
@@ -25,8 +25,14 @@ export function renderSetChoices(doc, sets, onChange) {
   });
 }
 
-/** A number input per rarity present in the set, defaulted from the rarity map. */
-export function renderRarityInputs(doc, raritiesPresent, onChange) {
+/**
+ * A number input per rarity present in the set, every one starting at zero.
+ *
+ * `previous` carries the quantities already on screen, so switching sets keeps
+ * what you typed. Without it, every set change would silently reset the form
+ * to zero and the tool would be tiresome to use.
+ */
+export function renderRarityInputs(doc, raritiesPresent, onChange, previous = {}) {
   const container = doc.getElementById("rarities");
   container.replaceChildren();
 
@@ -38,7 +44,7 @@ export function renderRarityInputs(doc, raritiesPresent, onChange) {
     const input = doc.createElement("input");
     input.type = "number";
     input.min = "0";
-    input.value = String(defaultQuantityFor(rarity));
+    input.value = String(previous[rarity.toLowerCase()] ?? DEFAULT_QUANTITY);
     input.dataset.rarity = rarity;
     input.addEventListener("input", onChange);
 
@@ -68,5 +74,5 @@ export function showOutput(doc, text, { cards, copies }) {
   doc.getElementById("output").value = text;
   doc.getElementById("summary").textContent = cards
     ? `${cards} cards, ${copies} copies.`
-    : "Nothing to want — either every rarity is set to 0, or you already own the lot.";
+    : "Nothing wanted yet — raise a rarity above 0 to build a list.";
 }

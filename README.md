@@ -10,6 +10,9 @@ Pick a set, say how many copies of each rarity you want, and get a list you can 
 **Buying → My Wants → your list**. Upload a collection export and it subtracts what you already have, so the list is only what
 you still need.
 
+Every rarity starts at 0, so nothing is requested until you ask for it. A common set completion is 1 common, 2 uncommon, 3 rare
+and 4 of each super rare and legendary. Quantities you type carry over when you switch sets.
+
 Card data comes from [Lorcast](https://lorcast.com), fetched live in your browser. New sets appear on their own — the site never
 needs updating for a release.
 

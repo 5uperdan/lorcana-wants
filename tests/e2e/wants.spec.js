@@ -33,6 +33,12 @@ async function stubLorcast(page) {
   await page.route("**/v0/sets", (route) => route.fulfill({ json: SETS }));
 }
 
+/** Type quantities the way a visitor would. Everything starts at 0. */
+async function wantTheUsual(page) {
+  await page.locator('#rarities input[data-rarity="Rare"]').fill("3");
+  await page.locator('#rarities input[data-rarity="Common"]').fill("1");
+}
+
 /** Console and page errors, collected per test. */
 const errorsByPage = new WeakMap();
 
@@ -50,15 +56,27 @@ test.beforeEach(async ({ page }) => {
 test("the page boots and produces a wants list", async ({ page }) => {
   await page.goto("/");
 
-  // If the module graph fails to load, this is what catches it.
+  // If the module graph fails to load, the rarity boxes never appear and this
+  // is what catches it.
+  await wantTheUsual(page);
+
   await expect(page.locator("#output")).toHaveValue(
     "3 Woody - Helping a Friend\n1 Piercing Attack",
   );
   await expect(page.locator("#summary")).toHaveText("2 cards, 4 copies.");
 });
 
+test("the list starts empty and says so", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator("#rarities input").first()).toHaveValue("0");
+  await expect(page.locator("#output")).toHaveValue("");
+  await expect(page.locator("#summary")).toContainText(/nothing wanted yet/i);
+});
+
 test("no console errors while doing the normal thing", async ({ page }) => {
   await page.goto("/");
+  await wantTheUsual(page);
   await expect(page.locator("#output")).not.toHaveValue("");
 
   expect(errorsByPage.get(page)).toEqual([]);
@@ -72,7 +90,9 @@ test("the newest numbered set is selected, not a later promo set", async ({ page
 
   await expect(page.locator("#sets label").first()).toContainText("Attack of the Vine! (2026)");
   await expect(page.locator("#sets input").first()).toBeChecked();
-  await expect(page.locator("#output")).not.toHaveValue("");
+  // The promo set has only a Promo rarity, so landing there would show a
+  // single box; a numbered set shows the full spread.
+  await expect(page.locator("#rarities label")).toHaveCount(3);
 });
 
 test("promo sets are still reachable, listed after the numbered ones", async ({ page }) => {
@@ -83,6 +103,7 @@ test("promo sets are still reachable, listed after the numbered ones", async ({ 
 
 test("changing a rarity updates the list", async ({ page }) => {
   await page.goto("/");
+  await wantTheUsual(page);
   await expect(page.locator("#output")).not.toHaveValue("");
 
   await page.locator("#rarities input").last().fill("1");
@@ -92,17 +113,20 @@ test("changing a rarity updates the list", async ({ page }) => {
   await expect(page.locator("#output")).toHaveValue(/1 Elsa - Spirit of Winter/);
 });
 
-test("choosing another set loads its cards", async ({ page }) => {
+test("choosing another set loads its cards, keeping the quantities typed", async ({ page }) => {
   await page.goto("/");
+  await wantTheUsual(page);
   await expect(page.locator("#output")).not.toHaveValue("");
 
   await page.locator("#sets input").nth(1).check();
 
   await expect(page.locator("#output")).toHaveValue("1 Someone Else");
+  await expect(page.locator('#rarities input[data-rarity="Common"]')).toHaveValue("1");
 });
 
 test("uploading a collection subtracts what you own", async ({ page }) => {
   await page.goto("/");
+  await wantTheUsual(page);
   await expect(page.locator("#output")).not.toHaveValue("");
 
   await page.locator("#collection").setInputFiles(COLLECTION);
@@ -113,6 +137,7 @@ test("uploading a collection subtracts what you own", async ({ page }) => {
 
 test("unticking foils stops foils counting toward the target", async ({ page }) => {
   await page.goto("/");
+  await wantTheUsual(page);
   await page.locator("#collection").setInputFiles(COLLECTION);
   await expect(page.locator("#output")).toHaveValue("1 Woody - Helping a Friend");
 
@@ -121,7 +146,7 @@ test("unticking foils stops foils counting toward the target", async ({ page }) 
   await expect(page.locator("#output")).toHaveValue("2 Woody - Helping a Friend");
 });
 
-test("the reprint explainer is reachable by keyboard, not only by hover", async ({ page }) => {
+test("the reprint explainer opens on keyboard focus, not only on hover", async ({ page }) => {
   await page.goto("/");
 
   await page.locator(".info").focus();
@@ -129,9 +154,20 @@ test("the reprint explainer is reachable by keyboard, not only by hover", async 
   await expect(page.locator(".info .tip")).toBeVisible();
 });
 
+test("the reprint explainer opens on tap, for devices with no hover", async ({ page }) => {
+  // It is a button rather than a span with tabindex precisely so that tapping
+  // it focuses it on a touch device.
+  await page.goto("/");
+
+  await page.locator(".info").click();
+
+  await expect(page.locator(".info .tip")).toBeVisible();
+});
+
 test("copying puts the list on the clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
+  await wantTheUsual(page);
   await expect(page.locator("#output")).not.toHaveValue("");
 
   await page.locator("#copy").click();
@@ -139,6 +175,42 @@ test("copying puts the list on the clipboard", async ({ page, context }) => {
   await expect(page.locator("#copy")).toHaveText("Copied");
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
   expect(clipboard).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
+});
+
+test("the layout holds together on a phone-sized screen", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await wantTheUsual(page);
+
+  // Nothing may push the page sideways — horizontal scroll is the classic
+  // mobile failure and it is invisible on a desktop viewport.
+  const overflows = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflows).toBe(false);
+
+  // The wide CSV example must scroll inside its own box, not stretch the page.
+  const preScrolls = await page.evaluate(() => {
+    const pre = document.querySelector("pre");
+    return pre.scrollWidth > pre.clientWidth;
+  });
+  expect(preScrolls).toBe(true);
+
+  await expect(page.locator("#output")).not.toHaveValue("");
+});
+
+test("the reprint explainer fits the screen when opened on a phone", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+
+  await page.locator(".info").click();
+
+  await expect(page.locator(".info .tip")).toBeVisible();
+  const fits = await page.evaluate(() => {
+    const { left, right } = document.querySelector(".info .tip").getBoundingClientRect();
+    return left >= 0 && right <= window.innerWidth;
+  });
+  expect(fits).toBe(true);
 });
 
 test("an unreachable API is reported rather than leaving a blank page", async ({ page }) => {

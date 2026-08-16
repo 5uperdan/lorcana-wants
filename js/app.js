@@ -65,6 +65,7 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
   }
 
   async function selectSet(code) {
+    const entered = readQuantities(doc);
     state.setCode = code;
     setStatus(doc, "sets-status", "Loading cards…");
     try {
@@ -75,7 +76,9 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
       return;
     }
     setStatus(doc, "sets-status", `${state.cards.length} cards in this set.`);
-    renderRarityInputs(doc, raritiesInSet(state.cards), recalculate);
+    // Read before re-rendering: the inputs are about to be replaced, and
+    // whatever was typed should survive a change of set.
+    renderRarityInputs(doc, raritiesInSet(state.cards), recalculate, entered);
     recalculate();
   }
 

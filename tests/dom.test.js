@@ -88,12 +88,29 @@ test("re-rendering replaces the previous set choices rather than appending", () 
   expect(document.querySelectorAll("#sets input")).toHaveLength(2);
 });
 
-test("a number input is rendered per rarity, defaulted from the rarity map", () => {
+test("a number input is rendered per rarity, every one starting at zero", () => {
   renderRarityInputs(document, ["Common", "Super_rare", "Enchanted"], () => {});
 
   const inputs = [...document.querySelectorAll("#rarities input")];
 
-  expect(inputs.map((node) => node.value)).toEqual(["1", "4", "0"]);
+  expect(inputs.map((node) => node.value)).toEqual(["0", "0", "0"]);
+});
+
+test("previously entered quantities survive a re-render", () => {
+  // Changing set re-renders these inputs; whatever was typed must not be lost.
+  renderRarityInputs(document, ["Common", "Rare"], () => {}, { common: 2, rare: 3 });
+
+  const inputs = [...document.querySelectorAll("#rarities input")];
+
+  expect(inputs.map((node) => node.value)).toEqual(["2", "3"]);
+});
+
+test("a rarity the previous set did not have falls back to zero", () => {
+  renderRarityInputs(document, ["Common", "Iconic"], () => {}, { common: 2 });
+
+  const inputs = [...document.querySelectorAll("#rarities input")];
+
+  expect(inputs.map((node) => node.value)).toEqual(["2", "0"]);
 });
 
 test("rarity inputs are labelled readably", () => {
@@ -121,8 +138,11 @@ test("editing a rarity notifies the caller", () => {
   expect(changes).toBe(1);
 });
 
-test("readQuantities returns lowercased rarity keys", () => {
+test("readQuantities returns lowercased rarity keys and the entered values", () => {
   renderRarityInputs(document, ["Common", "Super_rare"], () => {});
+  const [common, superRare] = document.querySelectorAll("#rarities input");
+  common.value = "1";
+  superRare.value = "4";
 
   expect(readQuantities(document)).toEqual({ common: 1, super_rare: 4 });
 });
@@ -160,5 +180,5 @@ test("showOutput fills the textarea and summarises", () => {
 test("showOutput explains an empty result instead of leaving a blank box", () => {
   showOutput(document, "", { cards: 0, copies: 0 });
 
-  expect(document.getElementById("summary").textContent).toMatch(/nothing to want/i);
+  expect(document.getElementById("summary").textContent).toMatch(/nothing wanted yet/i);
 });
