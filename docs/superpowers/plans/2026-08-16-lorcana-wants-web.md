@@ -15,7 +15,8 @@
 - **The deployed site has no build step.** GitHub Pages serves `index.html`, `styles.css` and `js/` verbatim. No bundler, no transpiler, no framework, and no generated artefact is ever committed or deployed. `node_modules/` is development-only and gitignored.
 - **Test tooling is a devDependency and nothing else.** Vitest, jsdom and @testing-library/dom never appear in anything the browser loads.
 - **Test-first, always.** Every task writes the failing test, runs it to watch it fail for the right reason, then implements. A step that writes implementation before its test is a defect in the work, not a shortcut.
-- **Tests never touch the network.** `lorcast.js` takes a `fetchImpl` parameter; tests pass a stub. No test may make a real HTTP request.
+- **Three test layers.** Vitest for units and DOM behaviour, Playwright for a real browser smoke suite with the network stubbed, and one Playwright contract suite that does hit Lorcast — run on a schedule, never on a pull request.
+- **Only the contract suite may touch the network.** Everywhere else `lorcast.js` takes a `fetchImpl` and tests pass a stub, or Playwright intercepts the request at the network layer.
 - **Pure modules never touch the DOM.** `sets`, `rarities`, `collection`, `wants`, `render` run under Vitest's default `node` environment. Only `dom.js` and `app.js` opt into jsdom, via a `@vitest-environment jsdom` docblock.
 - **Data source is Lorcast:** `https://api.lorcast.com/v0/sets` and `https://api.lorcast.com/v0/sets/{code}/cards`. Set names and rarities always come from the API — never hardcode a set list or a rarity list, because the site must not need redeploying when a new set releases.
 - **Default quantities:** common 1, uncommon 2, rare 3, super_rare 4, legendary 4, every other rarity 0. Rarity keys are lowercased for lookup (`"Super_rare"` → `"super_rare"`); display uses the API's casing with underscores replaced by spaces.
@@ -2050,7 +2051,413 @@ git commit -m "Wire the app together with injected dependencies"
 
 ---
 
-### Task 8: Publish and document
+### Task 8: Browser tests with Playwright
+
+**Files:**
+- Create: `playwright.config.js`
+- Create: `tests/e2e/wants.spec.js`
+- Create: `tests/e2e/fixtures/collection.csv`
+- Create: `tests/contract/lorcast.spec.js`
+- Create: `.github/workflows/contract.yml`
+- Modify: `package.json`, `.gitignore`, `.github/workflows/ci.yml`
+
+**Interfaces:**
+- Consumes: the deployed page as a user meets it. No module imports.
+- Produces: nothing other tasks depend on.
+
+**Why this layer exists.** Vitest and jsdom prove the logic and the wiring, but they load modules through Vite's resolver, not
+the browser's. A wrong `src` path, a module the browser refuses, a CSS rule that hides the output, a clipboard call that needs a
+permission — all of these pass jsdom and break the real page. Playwright is the only thing here that opens the actual file over
+HTTP in a real engine.
+
+The suite stays deliberately small. It checks that the page boots and the main paths work; it does not re-test the logic that
+Vitest already covers exhaustively, because a slow suite that duplicates a fast one gets ignored.
+
+- [ ] **Step 1: Add the tooling**
+
+Add to `package.json` — `devDependencies` gains Playwright, `scripts` gains three entries:
+
+```json
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "test:e2e": "playwright test --project=smoke",
+    "test:e2e:ui": "playwright test --project=smoke --ui",
+    "test:contract": "playwright test --project=contract"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@testing-library/dom": "^10.4.1",
+    "@vitest/coverage-v8": "^4.1.10",
+    "jsdom": "^30.0.1",
+    "vitest": "^4.1.10"
+  }
+}
+```
+
+Install it, and the one browser we drive:
+
+```bash
+npm install
+npx playwright install --with-deps chromium
+```
+
+Append to `.gitignore`:
+
+```gitignore
+test-results/
+playwright-report/
+```
+
+`playwright.config.js`:
+
+```javascript
+import { defineConfig, devices } from "@playwright/test";
+
+const PORT = 4173;
+
+export default defineConfig({
+  // Two suites with different contracts. "smoke" stubs the network and gates
+  // every push. "contract" really calls Lorcast and runs on a schedule, so a
+  // third party having a bad morning never fails somebody's pull request.
+  projects: [
+    { name: "smoke", testDir: "./tests/e2e", use: { ...devices["Desktop Chrome"] } },
+    { name: "contract", testDir: "./tests/contract", use: { ...devices["Desktop Chrome"] } },
+  ],
+  use: { baseURL: `http://localhost:${PORT}` },
+  reporter: process.env.CI ? "github" : "list",
+  forbidOnly: Boolean(process.env.CI),
+  retries: process.env.CI ? 1 : 0,
+  // The same server the README tells a developer to use. Serving the
+  // repository as static files is exactly what GitHub Pages does.
+  webServer: {
+    command: `python3 -m http.server ${PORT}`,
+    port: PORT,
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+Vitest only collects `tests/**/*.test.js` and Playwright only collects `*.spec.js` under its two `testDir`s, so neither runner
+ever picks up the other's files.
+
+- [ ] **Step 2: Create the upload fixture**
+
+Create `tests/e2e/fixtures/collection.csv`. Two rows against set 13 card 1, one normal and one foil, so the upload has a visible
+effect on the wants list:
+
+```csv
+Set Number,Card Number,Variant,Count,Name,Color,Rarity
+013,1,normal,1,"Woody - Helping a Friend",Amber,Rare
+013,1,foil,1,"Woody - Helping a Friend",Amber,Rare
+013,2,normal,1,"Piercing Attack",Amber,Common
+```
+
+- [ ] **Step 3: Write the failing smoke tests**
+
+Create `tests/e2e/wants.spec.js`:
+
+```javascript
+import { fileURLToPath } from "node:url";
+
+import { expect, test } from "@playwright/test";
+
+const SETS = {
+  results: [
+    { code: "12", name: "Wilds Unknown", released_at: "2026-05-08" },
+    { code: "13", name: "Attack of the Vine!", released_at: "2026-07-17" },
+  ],
+};
+
+const CARDS_13 = [
+  { collector_number: "1", name: "Woody", version: "Helping a Friend", rarity: "Rare" },
+  { collector_number: "2", name: "Piercing Attack", rarity: "Common" },
+  { collector_number: "3", name: "Elsa", version: "Spirit of Winter", rarity: "Enchanted" },
+];
+
+const CARDS_12 = [{ collector_number: "1", name: "Someone Else", rarity: "Common" }];
+
+const COLLECTION = fileURLToPath(new URL("./fixtures/collection.csv", import.meta.url));
+
+/** Intercept at the network layer, so the page still uses its real fetch. */
+async function stubLorcast(page) {
+  await page.route("**/v0/sets/13/cards", (route) => route.fulfill({ json: CARDS_13 }));
+  await page.route("**/v0/sets/12/cards", (route) => route.fulfill({ json: CARDS_12 }));
+  await page.route("**/v0/sets", (route) => route.fulfill({ json: SETS }));
+}
+
+test.beforeEach(async ({ page }) => {
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.errors = errors;
+
+  await stubLorcast(page);
+});
+
+test("the page boots and produces a wants list", async ({ page }) => {
+  await page.goto("/");
+
+  // If the module graph fails to load, this is what catches it.
+  await expect(page.locator("#output")).toHaveValue(
+    "3 Woody - Helping a Friend\n1 Piercing Attack",
+  );
+  await expect(page.locator("#summary")).toHaveText("2 cards, 4 copies.");
+});
+
+test("no console errors while doing the normal thing", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#output")).not.toHaveValue("");
+
+  expect(page.errors).toEqual([]);
+});
+
+test("the newest set is selected first", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator("#sets label").first()).toContainText("Attack of the Vine! (2026)");
+  await expect(page.locator("#sets input").first()).toBeChecked();
+});
+
+test("changing a rarity updates the list", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#output")).not.toHaveValue("");
+
+  await page.locator("#rarities input").last().fill("1");
+
+  await expect(page.locator("#output")).toContainText("1 Elsa - Spirit of Winter");
+});
+
+test("choosing another set loads its cards", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#output")).not.toHaveValue("");
+
+  await page.locator("#sets input").nth(1).check();
+
+  await expect(page.locator("#output")).toHaveValue("1 Someone Else");
+});
+
+test("uploading a collection subtracts what you own", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#output")).not.toHaveValue("");
+
+  await page.locator("#collection").setInputFiles(COLLECTION);
+
+  await expect(page.locator("#collection-status")).toContainText("3 collection rows");
+  await expect(page.locator("#output")).toHaveValue("1 Woody - Helping a Friend");
+});
+
+test("unticking foils stops foils counting toward the target", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#collection").setInputFiles(COLLECTION);
+  await expect(page.locator("#output")).toHaveValue("1 Woody - Helping a Friend");
+
+  await page.locator("#count-foils").uncheck();
+
+  await expect(page.locator("#output")).toHaveValue("2 Woody - Helping a Friend");
+});
+
+test("the reprint explainer is reachable by keyboard, not only by hover", async ({ page }) => {
+  await page.goto("/");
+
+  await page.locator(".info").focus();
+
+  await expect(page.locator(".info .tip")).toBeVisible();
+});
+
+test("copying puts the list on the clipboard", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await expect(page.locator("#output")).not.toHaveValue("");
+
+  await page.locator("#copy").click();
+
+  await expect(page.locator("#copy")).toHaveText("Copied");
+  const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clipboard).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
+});
+
+test("an unreachable API is reported rather than leaving a blank page", async ({ page }) => {
+  await page.route("**/v0/sets", (route) => route.abort());
+  await page.goto("/");
+
+  await expect(page.locator("#sets-status")).toHaveClass(/error/);
+  await expect(page.locator("#sets-status")).toContainText(/could not reach/i);
+});
+```
+
+- [ ] **Step 4: Run them and watch them fail for the right reason**
+
+Run: `npm run test:e2e`
+
+If Tasks 1–7 are complete these may pass immediately. That is fine — this layer guards against regressions rather than driving
+new code. What matters is that each test fails for the right reason when you break the thing it covers. Prove it for the first
+one: temporarily change the `src` in `index.html` to `js/nope.js`, run again, watch "the page boots" fail, then put it back.
+
+- [ ] **Step 5: Write the live contract test**
+
+Create `tests/contract/lorcast.spec.js`:
+
+```javascript
+import { expect, test } from "@playwright/test";
+
+/**
+ * These really call Lorcast. Everything else stubs it, which means the whole
+ * suite would stay green if Lorcast renamed a field and the site broke. This
+ * is the only thing that would notice, so it runs on a schedule rather than
+ * on a pull request — a third party's bad morning must not fail somebody's PR.
+ */
+
+const API = "https://api.lorcast.com/v0";
+
+test("the sets endpoint still returns code, name and released_at", async ({ request }) => {
+  const response = await request.get(`${API}/sets`);
+  expect(response.ok()).toBe(true);
+
+  const { results } = await response.json();
+  expect(results.length).toBeGreaterThan(0);
+  expect(results[0]).toMatchObject({
+    code: expect.any(String),
+    name: expect.any(String),
+    released_at: expect.any(String),
+  });
+});
+
+test("the cards endpoint still returns collector_number, name and rarity", async ({ request }) => {
+  const response = await request.get(`${API}/sets/13/cards`);
+  expect(response.ok()).toBe(true);
+
+  const cards = await response.json();
+  expect(cards.length).toBeGreaterThan(0);
+  expect(cards[0]).toMatchObject({
+    collector_number: expect.any(String),
+    name: expect.any(String),
+    rarity: expect.any(String),
+  });
+});
+
+test("Attack of the Vine! still has the rarity split the tool was built against", async ({ request }) => {
+  const cards = await (await request.get(`${API}/sets/13/cards`)).json();
+
+  const counts = {};
+  for (const card of cards) counts[card.rarity] = (counts[card.rarity] ?? 0) + 1;
+
+  expect(counts).toMatchObject({
+    Common: 72,
+    Uncommon: 54,
+    Rare: 51,
+    Super_rare: 18,
+    Legendary: 12,
+  });
+});
+
+test("the live site still serves CORS headers the browser will accept", async ({ request }) => {
+  const response = await request.get(`${API}/sets`, {
+    headers: { Origin: "https://5uperdan.github.io" },
+  });
+
+  expect(response.headers()["access-control-allow-origin"]).toBe("*");
+});
+```
+
+- [ ] **Step 6: Run the contract suite**
+
+Run: `npm run test:contract`
+Expected: PASS, 4 tests. A failure here is news about Lorcast, not about this repository.
+
+- [ ] **Step 7: Wire both into CI**
+
+Replace `.github/workflows/ci.yml`:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run coverage
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+```
+
+The two jobs run in parallel, and the report artifact means a CI-only failure can be read rather than guessed at.
+
+Create `.github/workflows/contract.yml`:
+
+```yaml
+name: Contract
+
+# Lorcast is a third party. Checking it on a schedule tells us when it changes
+# without letting it fail anybody's pull request.
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:contract
+```
+
+- [ ] **Step 8: Run everything**
+
+```bash
+npm run coverage && npm run test:e2e
+```
+
+Expected: 98 Vitest tests and 10 Playwright tests, all passing.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add package.json package-lock.json playwright.config.js .gitignore .github tests/e2e tests/contract
+git commit -m "Add Playwright smoke tests and a scheduled Lorcast contract check"
+```
+
+---
+
+### Task 9: Publish and document
 
 **Files:**
 - Create: `README.md`
@@ -2115,16 +2522,19 @@ never reaches the browser.
 
 ```bash
 npm install
-npm test                      # run the suite
+npx playwright install --with-deps chromium
+
+npm test                      # unit and DOM tests
 npm run test:watch            # watch mode
 npm run coverage              # with coverage thresholds
+npm run test:e2e              # browser smoke tests
+npm run test:e2e:ui           # the same, in Playwright's UI mode
+npm run test:contract         # really calls Lorcast
+
 python3 -m http.server 8000   # serve locally at http://localhost:8000
 ```
 
 A `file://` URL will not work — ES modules need http.
-
-Tests run on every push and pull request via GitHub Actions. CI runs tests only; it does not build or deploy, because Pages
-publishes the branch directly.
 
 ### How it is put together
 
@@ -2132,8 +2542,16 @@ Dependencies are injected rather than reached for, which is what makes a fronten
 `app.js` takes a `document`, a `fetch` and a `clipboard`, and `main.js` is a three-line bootstrap that supplies the real ones.
 `sets`, `rarities`, `collection`, `wants` and `render` are pure functions and run without a DOM at all.
 
-The DOM tests load the real `index.html` from disk, so renaming an element id without updating the code fails the suite rather
-than the deployed page.
+### Three layers of test
+
+| Layer | Runner | Covers | Runs |
+|---|---|---|---|
+| Unit and DOM | Vitest + jsdom | Every module, including the wiring. Loads the real `index.html`, so renaming an element id fails the suite rather than the page. | Every push and PR |
+| Browser smoke | Playwright, network stubbed | That the real page boots over HTTP and its main paths work — module loading, file upload, clipboard, keyboard access. | Every push and PR |
+| Contract | Playwright, live | That Lorcast still returns the fields the tool reads. Nothing else would notice a rename, because everything else stubs it. | Weekly, and on demand |
+
+The contract suite is kept off pull requests on purpose: it can fail for reasons that have nothing to do with the change being
+reviewed.
 
 ## Not supported
 
@@ -2171,17 +2589,19 @@ gh api repos/5uperdan/lorcana-wants/pages --jq .html_url
 
 If it reports the site already exists, that is fine.
 
-- [ ] **Step 6: Verify the deployed page by hand**
+- [ ] **Step 6: Verify the deployed page against real data**
 
-The suite cannot prove a real browser boots the page, so check these on
+Playwright already proves the page boots and its paths work, but always against stubbed cards on localhost. What is left is what
+it deliberately does not cover: the real Pages URL, and real Lorcast numbers. Check these on
 `https://5uperdan.github.io/lorcana-wants/` once the first build finishes:
 
-1. The set list loads and *Attack of the Vine! (2026)* is selected.
-2. The output reads `207 cards, 453 copies` and begins `3 Woody - Helping a Friend`.
+1. The page loads over HTTPS with no console errors, and *Attack of the Vine! (2026)* is selected.
+2. The output reads `207 cards, 453 copies` and begins `3 Woody - Helping a Friend`. These are the figures verified against live
+   data on 2026-08-16, so this checks the whole chain end to end.
 3. Setting Epic to 1 raises it to `225 cards, 471 copies`.
-4. Uploading a real collection export lowers the count and reports the rows read.
-5. Unticking *Count my foil copies* raises the count again.
-6. *Into the Inklands* produces exactly one `Dalmatian Puppy - Tail Wagger` line, quantity 5.
-7. The `i` beside "One set at a time" shows its explanation on hover and on keyboard focus.
-8. Copy to clipboard works and the button confirms.
-9. The browser console is free of errors.
+4. *Into the Inklands* produces exactly one `Dalmatian Puppy - Tail Wagger` line, quantity 5 — the merge behaviour against real
+   data rather than a three-card fixture.
+5. Uploading your own collection export lowers the count and reports the rows read, with a plausible number skipped.
+
+If step 2 or 4 disagrees with the numbers above, the cause is either a real regression or Lorcast changing its data. Run
+`npm run test:contract` to tell which.

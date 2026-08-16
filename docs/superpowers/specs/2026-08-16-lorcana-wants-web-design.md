@@ -150,7 +150,9 @@ js/
 ├── dom.js          # DOM rendering, taking the document as an argument
 ├── app.js          # createApp({document, fetchImpl, clipboard})
 └── main.js         # bootstrap: hand createApp the real browser
-tests/              # Vitest; DOM tests opt into jsdom per file
+tests/              # Vitest units; DOM tests opt into jsdom per file
+├── e2e/            # Playwright smoke suite, network stubbed
+└── contract/       # Playwright, really calls Lorcast
 ```
 
 No framework and no bundler. The page is small and cannot rot from a toolchain upgrade.
@@ -172,24 +174,38 @@ a `@vitest-environment jsdom` docblock, so only the tests that need a DOM pay fo
 
 Test-first throughout: the failing test is written and watched to fail before the implementation exists.
 
-Two deliberate choices about scope:
+**The DOM tests load the real `index.html` from disk** rather than a fixture, and assert that every element id the code looks up
+exists. Renaming an id in the markup without updating the code fails the suite instead of the deployed page.
 
-- **The DOM tests load the real `index.html` from disk** rather than a fixture, and assert that every element id the code looks
-  up exists. Renaming an id in the markup without updating the code fails the suite instead of the deployed page.
-- **There is no browser-driving test.** Vitest and jsdom cannot prove a real browser boots the page — a module resolution error
-  or a wrong script path would still pass. The id-and-script-path assertions cover the common cases; the rest is a short manual
-  checklist against the deployed site, which the plan spells out.
+### Three layers, each covering what the one below cannot
 
-Test tooling is a development dependency and nothing more. Vitest, jsdom and @testing-library/dom never appear in anything the
-browser loads, so testing rigour costs the deployed page nothing.
+| Layer | Runner | What only this layer catches | Runs |
+|---|---|---|---|
+| Unit and DOM | Vitest + jsdom | Logic and wiring errors, in milliseconds | Every push and PR |
+| Browser smoke | Playwright, network stubbed | The page failing to boot in a real engine — a wrong script path, a module the browser rejects, a clipboard permission, a rule that hides the output | Every push and PR |
+| Contract | Playwright, live Lorcast | Lorcast changing its response shape | Weekly and on demand |
+
+Vitest resolves modules through Vite, not the browser, so it can pass on a page no browser will run. Playwright opens the real
+file over HTTP in Chromium, which is the only thing here that proves the deployed artefact works.
+
+The smoke suite stubs the network so it is deterministic, and stays small: it checks that the page boots and the main paths
+work, and leaves the exhaustive cases to Vitest. A slow suite that duplicates a fast one gets ignored.
+
+The contract suite exists because everything else stubs Lorcast — which means the entire suite would stay green if Lorcast
+renamed `collector_number` and the site broke for everyone. It runs on a schedule rather than on pull requests, because a third
+party having a bad morning must not fail somebody's review.
+
+Test tooling is a development dependency and nothing more. Vitest, jsdom, @testing-library/dom and Playwright never appear in
+anything the browser loads, so testing rigour costs the deployed page nothing.
 
 ### CI
 
-GitHub Actions runs the suite with coverage on every push to `main` and every pull request. The repository is public, so
-standard runners are free and have no minute allowance to exhaust.
+GitHub Actions runs the unit and smoke suites in parallel on every push to `main` and every pull request, and the contract suite
+weekly. The repository is public, so standard runners are free and have no minute allowance to exhaust. A failed smoke run
+uploads its Playwright report as an artifact, so a CI-only failure can be read rather than guessed at.
 
-CI runs tests only. It does not build, bundle or deploy: Pages publishes the branch directly, so a red run never blocks a
-deploy and a green one never causes one. That keeps the deployment story honest — what is in the repository is what is served.
+CI runs tests only. It does not build, bundle or deploy: Pages publishes the branch directly, so a red run never blocks a deploy
+and a green one never causes one. That keeps the deployment story honest — what is in the repository is what is served.
 
 ## Error handling
 
