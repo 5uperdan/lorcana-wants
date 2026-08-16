@@ -154,6 +154,41 @@ test("unticking foils stops foils counting toward the target", async ({ page }) 
   await expect(page.locator("#outputs textarea").first()).toHaveValue("2 Woody - Helping a Friend");
 });
 
+test("removing the collection restores the full wants list", async ({ page }) => {
+  await page.goto("/");
+  await wantTheUsual(page);
+  await expect(page.locator("#clear-collection")).toBeHidden();
+
+  await page.locator("#collection").setInputFiles(COLLECTION);
+  await expect(page.locator("#outputs textarea").first()).toHaveValue(
+    "1 Woody - Helping a Friend",
+  );
+  await expect(page.locator("#clear-collection")).toBeVisible();
+
+  await page.locator("#clear-collection").click();
+
+  await expect(page.locator("#outputs textarea").first()).toHaveValue(
+    "3 Woody - Helping a Friend\n1 Piercing Attack",
+  );
+  await expect(page.locator("#clear-collection")).toBeHidden();
+});
+
+test("the same file can be uploaded again after removing it", async ({ page }) => {
+  // The real point of clearing the file input: a browser fires no change
+  // event when the same file is chosen twice.
+  await page.goto("/");
+  await wantTheUsual(page);
+
+  await page.locator("#collection").setInputFiles(COLLECTION);
+  await page.locator("#clear-collection").click();
+  await page.locator("#collection").setInputFiles(COLLECTION);
+
+  await expect(page.locator("#outputs textarea").first()).toHaveValue(
+    "1 Woody - Helping a Friend",
+  );
+  await expect(page.locator("#collection-status")).toContainText("3 collection rows");
+});
+
 test("the reprint explainer opens on keyboard focus, not only on hover", async ({ page }) => {
   await page.goto("/");
 

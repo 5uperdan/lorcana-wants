@@ -11,6 +11,7 @@ import {
   renderRarityInputs,
   renderSetChoices,
   setStatus,
+  showClearCollection,
   showOutput,
 } from "./dom.js";
 import { fetchSetCards, fetchSets } from "./lorcast.js";
@@ -24,6 +25,8 @@ const COPIED_MESSAGE_MS = 1500;
 
 export function createApp({ document: doc, fetchImpl = fetch, clipboard = navigator.clipboard }) {
   const state = { setCode: null, cards: [], collectionRows: null, unreadable: 0 };
+  // Taken from the markup so the wording lives in one place.
+  const emptyCollectionMessage = doc.getElementById("collection-status").textContent.trim();
 
   async function copyToClipboard(text, button) {
     await clipboard.writeText(text);
@@ -108,9 +111,28 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
       state.collectionRows = rows;
       state.unreadable = unparsed.length;
     } catch (error) {
+      // Keep whatever was loaded before, so a bad file does not silently
+      // discard a good one — and leave the remove button as it was.
       setStatus(doc, "collection-status", error.message, true);
       return;
     }
+    showClearCollection(doc, true);
+    recalculate();
+  }
+
+  /**
+   * Forget the uploaded collection and go back to wanting the whole set.
+   *
+   * Clearing the file input matters as much as clearing the rows: a file
+   * input fires no change event when the same file is picked again, so
+   * leaving the old filename in place would make re-uploading it do nothing.
+   */
+  function clearCollection() {
+    state.collectionRows = null;
+    state.unreadable = 0;
+    doc.getElementById("collection").value = "";
+    setStatus(doc, "collection-status", emptyCollectionMessage);
+    showClearCollection(doc, false);
     recalculate();
   }
 
@@ -133,6 +155,7 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
       const [file] = event.target.files;
       if (file) readFile(file);
     });
+    doc.getElementById("clear-collection").addEventListener("click", clearCollection);
     let sets;
     try {
       sets = orderSetsForPicker(await fetchSets(fetchImpl));
@@ -144,5 +167,5 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
     if (sets.length > 0) await selectSet(sets[0].code);
   }
 
-  return { start, recalculate, loadCollectionText };
+  return { start, recalculate, loadCollectionText, clearCollection };
 }

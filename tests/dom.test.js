@@ -9,6 +9,7 @@ import {
   renderRarityInputs,
   renderSetChoices,
   setStatus,
+  showClearCollection,
   showOutput,
 } from "../js/dom.js";
 import { INDEX_HTML } from "./helpers/page.js";
@@ -32,6 +33,7 @@ test("the markup contains every element the code looks up", () => {
     "collection-status",
     "count-normals",
     "count-foils",
+    "clear-collection",
     "outputs",
     "summary",
   ]) {
@@ -154,6 +156,18 @@ test("readQuantities treats a blank or negative entry as zero", () => {
   negative.value = "-3";
 
   expect(readQuantities(document)).toEqual({ common: 0, rare: 0 });
+});
+
+test("the remove button is hidden until a collection is loaded", () => {
+  expect(document.getElementById("clear-collection").hidden).toBe(true);
+});
+
+test("showClearCollection reveals and hides the remove button", () => {
+  showClearCollection(document, true);
+  expect(document.getElementById("clear-collection").hidden).toBe(false);
+
+  showClearCollection(document, false);
+  expect(document.getElementById("clear-collection").hidden).toBe(true);
 });
 
 test("setStatus writes the message", () => {

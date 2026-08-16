@@ -201,6 +201,76 @@ test("the match count follows the selected set", async () => {
   expect(statusOf("collection-status")).toMatch(/0 match this set/);
 });
 
+test("removing the collection goes back to wanting the whole set", async () => {
+  const app = build();
+  await app.start();
+  wantTheUsual();
+  app.loadCollectionText(COLLECTION);
+  expect(output()).toBe("1 Woody - Helping a Friend\n1 Piercing Attack");
+
+  app.clearCollection();
+
+  expect(output()).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
+});
+
+test("removing the collection restores the original status message", async () => {
+  const app = build();
+  await app.start();
+  const before = statusOf("collection-status").trim();
+  app.loadCollectionText(COLLECTION);
+
+  app.clearCollection();
+
+  expect(statusOf("collection-status")).toBe(before);
+  // Restored from the markup, so it must not carry the markup's indentation.
+  expect(statusOf("collection-status")).toBe(statusOf("collection-status").trim());
+});
+
+test("the remove button appears once a collection loads and goes away after", async () => {
+  const app = build();
+  await app.start();
+  expect(document.getElementById("clear-collection").hidden).toBe(true);
+
+  app.loadCollectionText(COLLECTION);
+  expect(document.getElementById("clear-collection").hidden).toBe(false);
+
+  app.clearCollection();
+  expect(document.getElementById("clear-collection").hidden).toBe(true);
+});
+
+test("clicking remove clears the collection", async () => {
+  const app = build();
+  await app.start();
+  wantTheUsual();
+  app.loadCollectionText(COLLECTION);
+
+  document.getElementById("clear-collection").click();
+
+  expect(output()).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
+});
+
+test("removing clears the file input, so the same file can be picked again", async () => {
+  // A file input fires no change event when the same file is chosen twice, so
+  // leaving the filename in place would make re-uploading appear to do nothing.
+  const app = build();
+  await app.start();
+  app.loadCollectionText(COLLECTION);
+
+  app.clearCollection();
+
+  expect(document.getElementById("collection").value).toBe("");
+});
+
+test("a malformed file leaves the remove button alone, since the old data stands", async () => {
+  const app = build();
+  await app.start();
+  app.loadCollectionText(COLLECTION);
+
+  app.loadCollectionText("Nonsense,Header\n1,2");
+
+  expect(document.getElementById("clear-collection").hidden).toBe(false);
+});
+
 test("unticking foils stops foil copies counting toward the target", async () => {
   const app = build();
   await app.start();

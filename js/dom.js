@@ -64,6 +64,11 @@ export function readQuantities(doc) {
   return quantities;
 }
 
+/** The remove button only makes sense once something is loaded. */
+export function showClearCollection(doc, visible) {
+  doc.getElementById("clear-collection").hidden = !visible;
+}
+
 export function setStatus(doc, id, message, isError = false) {
   const node = doc.getElementById(id);
   node.textContent = message;

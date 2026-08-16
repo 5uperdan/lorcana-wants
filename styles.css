@@ -217,3 +217,18 @@ button {
   margin: 0 0 0.35rem;
   font-weight: 600;
 }
+
+.upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+button.secondary {
+  margin-top: 0;
+  padding: 0.35rem 0.7rem;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.9rem;
+}

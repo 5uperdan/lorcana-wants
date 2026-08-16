@@ -31,6 +31,9 @@ Set Number,Card Number,Variant,Count,Name,Color,Rarity
 The page reports how many rows it read, how many match the set you picked, and how many did not. Some not matching is normal:
 promo cards use numbers like `2/P2` and belong to no numbered set.
 
+**Remove collection** forgets the upload and goes back to wanting the whole set, which is also the way to re-upload a file after
+editing it.
+
 ## Special rarities
 
 Epic, Enchanted and Iconic cards are alternate printings of cards already in the set — every one of Attack of the Vine!'s 18

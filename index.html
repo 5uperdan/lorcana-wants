@@ -76,7 +76,12 @@
         <pre><code>Set Number,Card Number,Variant,Count,Name,Color,Rarity
 005,135,normal,2,"Sugar Rush Speedway - Starting Line",Ruby,Rare
 005,32,foil,1,"Amber Chromicon",Amber,Uncommon</code></pre>
-        <input type="file" id="collection" accept=".csv,text/csv" />
+        <div class="upload">
+          <input type="file" id="collection" accept=".csv,text/csv" />
+          <button id="clear-collection" class="secondary" type="button" hidden>
+            Remove collection
+          </button>
+        </div>
         <div class="variants">
           <label><input type="checkbox" id="count-normals" checked /> Count my normal copies</label>
           <label><input type="checkbox" id="count-foils" checked /> Count my foil copies</label>
