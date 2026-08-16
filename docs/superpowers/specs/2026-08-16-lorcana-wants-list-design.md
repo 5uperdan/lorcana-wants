@@ -90,6 +90,9 @@ src/cardmarket_wants/
 
 `Want` is a small record: collector number, name, title, rarity, quantity.
 
+Runtime dependencies: none. Python 3.11+ standard library only (`urllib.request` for the fetch, `csv`, `argparse`,
+`dataclasses`), so the tool runs from a clean checkout with no install step. `pytest` is the only development dependency.
+
 The boundaries: `selection` and `render` are pure functions over plain data and carry the logic worth testing. `lorcana` is
 isolated so that everything else is testable without a network. `cli` does no logic beyond wiring.
 
