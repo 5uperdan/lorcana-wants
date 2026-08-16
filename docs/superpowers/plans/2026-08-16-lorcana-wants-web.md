@@ -2,31 +2,34 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A static, dependency-free web page that turns a Lorcana set plus a rarity quantity map plus an optional collection export into a Cardmarket-ready wants list.
+**Goal:** A static web page that turns a Lorcana set, a rarity quantity map, and an optional collection export into a Cardmarket-ready wants list — built test-first, with every module including the DOM wiring under test.
 
-**Architecture:** Plain ES modules, no framework and no bundler. `lorcast.js` is the only network code and takes an injected `fetch`; `sets`, `rarities`, `collection`, `wants` and `render` are pure functions with no DOM access; `ui.js` and `main.js` do the DOM wiring and stay thin.
+**Architecture:** Plain ES modules with dependencies injected rather than reached for. `lorcast.js` takes a `fetch`; `app.js` takes a `document` and a `fetch`; `main.js` is a three-line bootstrap that supplies the real ones. `sets`, `rarities`, `collection`, `wants` and `render` are pure functions. Nothing imports a global it could not be handed instead, which is what makes the whole thing testable.
 
-**Tech Stack:** Vanilla JavaScript (ES modules), HTML, CSS. `node --test` for tests — stock Node, nothing installed. GitHub Pages for hosting.
+**Tech Stack:** Vanilla JavaScript (ES modules), HTML, CSS. Vitest + jsdom + @testing-library/dom for tests, GitHub Actions for CI. Test tooling is a development dependency only — the deployed site is the source files, served as-is.
 
 **Spec:** `docs/superpowers/specs/2026-08-16-lorcana-wants-web-design.md`
 
 ## Global Constraints
 
-- **No build step and no dependencies.** No npm install, no bundler, no framework. `package.json` exists solely to declare `{"type": "module"}` so Node treats `.js` as ES modules.
-- **Tests never touch the network.** `lorcast.js` takes a `fetchImpl` parameter defaulting to global `fetch`; tests pass a stub.
-- **Pure modules never touch the DOM.** `sets`, `rarities`, `collection`, `wants`, `render` must be importable under `node --test`, which has no `document`.
+- **The deployed site has no build step.** GitHub Pages serves `index.html`, `styles.css` and `js/` verbatim. No bundler, no transpiler, no framework, and no generated artefact is ever committed or deployed. `node_modules/` is development-only and gitignored.
+- **Test tooling is a devDependency and nothing else.** Vitest, jsdom and @testing-library/dom never appear in anything the browser loads.
+- **Test-first, always.** Every task writes the failing test, runs it to watch it fail for the right reason, then implements. A step that writes implementation before its test is a defect in the work, not a shortcut.
+- **Tests never touch the network.** `lorcast.js` takes a `fetchImpl` parameter; tests pass a stub. No test may make a real HTTP request.
+- **Pure modules never touch the DOM.** `sets`, `rarities`, `collection`, `wants`, `render` run under Vitest's default `node` environment. Only `dom.js` and `app.js` opt into jsdom, via a `@vitest-environment jsdom` docblock.
 - **Data source is Lorcast:** `https://api.lorcast.com/v0/sets` and `https://api.lorcast.com/v0/sets/{code}/cards`. Set names and rarities always come from the API — never hardcode a set list or a rarity list, because the site must not need redeploying when a new set releases.
-- **Default quantities:** common 1, uncommon 2, rare 3, super_rare 4, legendary 4, every other rarity 0. Rarity keys are lowercased for lookup (`"Super_rare"` → `"super_rare"`); display uses the API's own casing with underscores replaced by spaces.
+- **Default quantities:** common 1, uncommon 2, rare 3, super_rare 4, legendary 4, every other rarity 0. Rarity keys are lowercased for lookup (`"Super_rare"` → `"super_rare"`); display uses the API's casing with underscores replaced by spaces.
 - **Output line format:** `<quantity> <name>` when there is no version, `<quantity> <name> - <version>` otherwise. Plain hyphen with a space either side. No expansion qualifier. Names verbatim, including accents.
 - **Sorting** is by collector number with the numeric part compared numerically, so `4a` sorts before `40`.
 - **`index.html` lives at the repository root**, because GitHub Pages serves the root of `main`.
 
 ---
 
-### Task 1: Scaffolding and the Lorcast client
+### Task 1: Tooling, CI, and the Lorcast client
 
 **Files:**
-- Create: `package.json`
+- Create: `package.json`, `vitest.config.js`, `.github/workflows/ci.yml`
+- Modify: `.gitignore`
 - Create: `js/lorcast.js`
 - Test: `tests/lorcast.test.js`
 
@@ -34,7 +37,7 @@
 - Consumes: nothing.
 - Produces: `API_BASE: string`, `LorcastError extends Error`, `fetchSets(fetchImpl?) -> Promise<Array<{code, name, releasedAt}>>`, `fetchSetCards(code, fetchImpl?) -> Promise<Array<{collectorNumber, name, version, rarity}>>`.
 
-- [ ] **Step 1: Create the manifest**
+- [ ] **Step 1: Create the tooling**
 
 `package.json`:
 
@@ -44,30 +47,112 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@vitest/coverage-v8": "^4.1.10",
+    "jsdom": "^30.0.1",
+    "vitest": "^4.1.10"
   }
 }
 ```
 
-There are no `dependencies` and no `devDependencies`, and there must never be. `npm test` works on stock Node without an install.
+There are no runtime `dependencies`, and there must never be. Anything the browser loads is a file in this repository.
 
-- [ ] **Step 2: Write the failing tests**
+`vitest.config.js`:
+
+```javascript
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    // Pure modules run in Node. DOM tests opt in per file with a
+    // `@vitest-environment jsdom` docblock, so they pay for jsdom and the
+    // other tests don't.
+    environment: "node",
+    include: ["tests/**/*.test.js"],
+    coverage: {
+      provider: "v8",
+      include: ["js/**/*.js"],
+      // main.js is the bootstrap that supplies real browser globals. There is
+      // nothing in it to test that app.js does not already cover.
+      exclude: ["js/main.js"],
+      // Lines and statements are held high. Functions and branches sit a
+      // little lower because the file-reading callbacks and the copy-button
+      // timeout are browser plumbing with nothing worth asserting.
+      thresholds: { lines: 90, statements: 90, functions: 85, branches: 85 },
+    },
+  },
+});
+```
+
+Replace `.gitignore` entirely — the Python entries no longer apply:
+
+```gitignore
+.DS_Store
+node_modules/
+coverage/
+```
+
+`package-lock.json` **is** committed, because CI runs `npm ci`, which requires it.
+
+`.github/workflows/ci.yml`:
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run coverage
+```
+
+This repository is public, so GitHub-hosted standard runners cost nothing and have no minute allowance to exhaust.
+
+CI runs tests only. It deliberately does not build, bundle, or deploy: Pages publishes the branch directly, so a red build never blocks a deploy and a green one never causes it.
+
+- [ ] **Step 2: Install and confirm the runner works**
+
+```bash
+npm install
+npx vitest run --passWithNoTests
+```
+
+Expected: Vitest starts and reports no test files. If this fails, stop and fix the tooling before writing any test.
+
+- [ ] **Step 3: Write the failing tests**
 
 Create `tests/lorcast.test.js`:
 
 ```javascript
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
 import { API_BASE, LorcastError, fetchSetCards, fetchSets } from "../js/lorcast.js";
 
 function stubFetch(payload, { ok = true, status = 200 } = {}) {
   const calls = [];
-  const fetchImpl = async (url) => {
-    calls.push(url);
-    return { ok, status, json: async () => payload };
+  return {
+    calls,
+    fetchImpl: async (url) => {
+      calls.push(url);
+      return { ok, status, json: async () => payload };
+    },
   };
-  return { fetchImpl, calls };
 }
 
 test("fetchSets requests the sets endpoint", async () => {
@@ -75,7 +160,7 @@ test("fetchSets requests the sets endpoint", async () => {
 
   await fetchSets(fetchImpl);
 
-  assert.deepEqual(calls, [`${API_BASE}/sets`]);
+  expect(calls).toEqual([`${API_BASE}/sets`]);
 });
 
 test("fetchSets maps sets to code, name and release date", async () => {
@@ -86,7 +171,7 @@ test("fetchSets maps sets to code, name and release date", async () => {
     ],
   });
 
-  assert.deepEqual(await fetchSets(fetchImpl), [
+  expect(await fetchSets(fetchImpl)).toEqual([
     { code: "13", name: "Attack of the Vine!", releasedAt: "2026-07-17" },
     { code: "P1", name: "Promo Set 1", releasedAt: "2023-08-18" },
   ]);
@@ -97,7 +182,7 @@ test("fetchSetCards requests the cards endpoint for the set", async () => {
 
   await fetchSetCards("13", fetchImpl);
 
-  assert.deepEqual(calls, [`${API_BASE}/sets/13/cards`]);
+  expect(calls).toEqual([`${API_BASE}/sets/13/cards`]);
 });
 
 test("fetchSetCards maps cards to the fields the tool needs", async () => {
@@ -106,44 +191,53 @@ test("fetchSetCards maps cards to the fields the tool needs", async () => {
     { collector_number: "102", name: "Piercing Attack", rarity: "Common" },
   ]);
 
-  assert.deepEqual(await fetchSetCards("13", fetchImpl), [
+  expect(await fetchSetCards("13", fetchImpl)).toEqual([
     { collectorNumber: "1", name: "Woody", version: "Helping a Friend", rarity: "Rare" },
     { collectorNumber: "102", name: "Piercing Attack", version: "", rarity: "Common" },
   ]);
 });
 
 test("a missing version becomes an empty string, never undefined", async () => {
-  const { fetchImpl } = stubFetch([{ collector_number: "1", name: "Circle of Life", rarity: "Rare" }]);
+  const { fetchImpl } = stubFetch([
+    { collector_number: "1", name: "Circle of Life", rarity: "Rare" },
+  ]);
+
   const [card] = await fetchSetCards("13", fetchImpl);
 
-  assert.equal(card.version, "");
+  expect(card.version).toBe("");
 });
 
 test("a non-ok response raises LorcastError naming the status", async () => {
   const { fetchImpl } = stubFetch(null, { ok: false, status: 503 });
 
-  await assert.rejects(() => fetchSets(fetchImpl), (error) => {
-    assert.ok(error instanceof LorcastError);
-    assert.match(error.message, /503/);
-    return true;
-  });
+  await expect(fetchSets(fetchImpl)).rejects.toThrow(/503/);
+  await expect(fetchSets(fetchImpl)).rejects.toBeInstanceOf(LorcastError);
 });
 
-test("a network failure is wrapped in LorcastError", async () => {
+test("a network failure is wrapped in LorcastError rather than leaking a TypeError", async () => {
   const fetchImpl = async () => {
     throw new TypeError("Failed to fetch");
   };
 
-  await assert.rejects(() => fetchSets(fetchImpl), LorcastError);
+  await expect(fetchSets(fetchImpl)).rejects.toBeInstanceOf(LorcastError);
+});
+
+test("the wrapped network failure keeps the original error as its cause", async () => {
+  const original = new TypeError("Failed to fetch");
+  const fetchImpl = async () => {
+    throw original;
+  };
+
+  await expect(fetchSets(fetchImpl)).rejects.toMatchObject({ cause: original });
 });
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [ ] **Step 4: Run the tests to verify they fail**
 
-Run: `node --test tests/lorcast.test.js`
-Expected: FAIL — cannot find module `../js/lorcast.js`
+Run: `npx vitest run tests/lorcast.test.js`
+Expected: FAIL — cannot resolve `../js/lorcast.js`
 
-- [ ] **Step 4: Write the implementation**
+- [ ] **Step 5: Write the implementation**
 
 Create `js/lorcast.js`:
 
@@ -153,8 +247,8 @@ Create `js/lorcast.js`:
 export const API_BASE = "https://api.lorcast.com/v0";
 
 export class LorcastError extends Error {
-  constructor(message, { cause } = {}) {
-    super(message, { cause });
+  constructor(message, options) {
+    super(message, options);
     this.name = "LorcastError";
   }
 }
@@ -195,16 +289,16 @@ export async function fetchSetCards(code, fetchImpl = fetch) {
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `node --test tests/lorcast.test.js`
-Expected: PASS, 7 tests
+Run: `npx vitest run tests/lorcast.test.js`
+Expected: PASS, 8 tests
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add package.json js/lorcast.js tests/lorcast.test.js
-git commit -m "Add Lorcast API client"
+git add package.json package-lock.json vitest.config.js .gitignore .github js/lorcast.js tests/lorcast.test.js
+git commit -m "Add test tooling, CI, and the Lorcast API client"
 ```
 
 ---
@@ -212,22 +306,19 @@ git commit -m "Add Lorcast API client"
 ### Task 2: Set ordering and rarity defaults
 
 **Files:**
-- Create: `js/sets.js`
-- Create: `js/rarities.js`
-- Test: `tests/sets.test.js`
-- Test: `tests/rarities.test.js`
+- Create: `js/sets.js`, `js/rarities.js`
+- Test: `tests/sets.test.js`, `tests/rarities.test.js`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: from `sets.js`, `sortSetsNewestFirst(sets) -> Array` and `setLabel(set) -> string`. From `rarities.js`, `DEFAULT_QUANTITIES: object`, `rarityKey(rarity) -> string`, `rarityLabel(rarity) -> string`, `defaultQuantityFor(rarity) -> number`, and `raritiesInSet(cards) -> Array<string>`.
+- Produces: from `sets.js`, `sortSetsNewestFirst(sets) -> Array` and `setLabel(set) -> string`. From `rarities.js`, `DEFAULT_QUANTITIES: object`, `rarityKey(rarity) -> string`, `rarityLabel(rarity) -> string`, `defaultQuantityFor(rarity) -> number`, `raritiesInSet(cards) -> Array<string>`.
 
 - [ ] **Step 1: Write the failing tests**
 
 Create `tests/sets.test.js`:
 
 ```javascript
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
 import { setLabel, sortSetsNewestFirst } from "../js/sets.js";
 
@@ -238,80 +329,77 @@ const SETS = [
 ];
 
 test("sets are ordered newest first", () => {
-  assert.deepEqual(
-    sortSetsNewestFirst(SETS).map((set) => set.code),
-    ["13", "P2", "1"],
-  );
+  expect(sortSetsNewestFirst(SETS).map((set) => set.code)).toEqual(["13", "P2", "1"]);
 });
 
 test("sorting does not mutate the input", () => {
-  const original = SETS.map((set) => set.code);
+  const before = SETS.map((set) => set.code);
 
   sortSetsNewestFirst(SETS);
 
-  assert.deepEqual(SETS.map((set) => set.code), original);
+  expect(SETS.map((set) => set.code)).toEqual(before);
 });
 
 test("sets with no release date sort last rather than throwing", () => {
   const withUnknown = [...SETS, { code: "X", name: "Unknown", releasedAt: "" }];
 
-  assert.equal(sortSetsNewestFirst(withUnknown).at(-1).code, "X");
+  expect(sortSetsNewestFirst(withUnknown).at(-1).code).toBe("X");
 });
 
 test("the label carries the name and the release year", () => {
-  assert.equal(setLabel(SETS[1]), "Attack of the Vine! (2026)");
+  expect(setLabel(SETS[1])).toBe("Attack of the Vine! (2026)");
 });
 
 test("a set with no release date is labelled by name alone", () => {
-  assert.equal(setLabel({ code: "X", name: "Unknown", releasedAt: "" }), "Unknown");
+  expect(setLabel({ code: "X", name: "Unknown", releasedAt: "" })).toBe("Unknown");
 });
 ```
 
 Create `tests/rarities.test.js`:
 
 ```javascript
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
 import {
   DEFAULT_QUANTITIES,
   defaultQuantityFor,
+  raritiesInSet,
   rarityKey,
   rarityLabel,
-  raritiesInSet,
 } from "../js/rarities.js";
 
 test("rarity keys are lowercased", () => {
-  assert.equal(rarityKey("Super_rare"), "super_rare");
-  assert.equal(rarityKey("Common"), "common");
+  expect(rarityKey("Super_rare")).toBe("super_rare");
+  expect(rarityKey("Common")).toBe("common");
 });
 
-test("rarity labels are readable", () => {
-  assert.equal(rarityLabel("Super_rare"), "Super rare");
-  assert.equal(rarityLabel("Common"), "Common");
+test("rarity labels replace underscores with spaces", () => {
+  expect(rarityLabel("Super_rare")).toBe("Super rare");
+  expect(rarityLabel("Common")).toBe("Common");
 });
 
 test("the agreed default quantities are used", () => {
-  assert.equal(defaultQuantityFor("Common"), 1);
-  assert.equal(defaultQuantityFor("Uncommon"), 2);
-  assert.equal(defaultQuantityFor("Rare"), 3);
-  assert.equal(defaultQuantityFor("Super_rare"), 4);
-  assert.equal(defaultQuantityFor("Legendary"), 4);
+  expect(defaultQuantityFor("Common")).toBe(1);
+  expect(defaultQuantityFor("Uncommon")).toBe(2);
+  expect(defaultQuantityFor("Rare")).toBe(3);
+  expect(defaultQuantityFor("Super_rare")).toBe(4);
+  expect(defaultQuantityFor("Legendary")).toBe(4);
 });
 
 test("secret rarities default to zero", () => {
-  assert.equal(defaultQuantityFor("Epic"), 0);
-  assert.equal(defaultQuantityFor("Enchanted"), 0);
-  assert.equal(defaultQuantityFor("Iconic"), 0);
+  expect(defaultQuantityFor("Epic")).toBe(0);
+  expect(defaultQuantityFor("Enchanted")).toBe(0);
+  expect(defaultQuantityFor("Iconic")).toBe(0);
 });
 
 test("a rarity nobody has seen before defaults to zero rather than failing", () => {
   // A new set must never break the page, so unknown rarities are simply off.
-  assert.equal(defaultQuantityFor("Mythic_Whatever"), 0);
+  expect(defaultQuantityFor("Mythic_Whatever")).toBe(0);
+  expect(defaultQuantityFor(undefined)).toBe(0);
 });
 
 test("DEFAULT_QUANTITIES holds exactly the wanted rarities", () => {
-  assert.deepEqual(DEFAULT_QUANTITIES, {
+  expect(DEFAULT_QUANTITIES).toEqual({
     common: 1,
     uncommon: 2,
     rare: 3,
@@ -328,18 +416,18 @@ test("rarities in a set are listed once each, in first-seen order", () => {
     { rarity: "Enchanted" },
   ];
 
-  assert.deepEqual(raritiesInSet(cards), ["Common", "Rare", "Enchanted"]);
+  expect(raritiesInSet(cards)).toEqual(["Common", "Rare", "Enchanted"]);
 });
 
 test("rarities in an empty set is an empty list", () => {
-  assert.deepEqual(raritiesInSet([]), []);
+  expect(raritiesInSet([])).toEqual([]);
 });
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `node --test tests/sets.test.js tests/rarities.test.js`
-Expected: FAIL — cannot find modules `../js/sets.js` and `../js/rarities.js`
+Run: `npx vitest run tests/sets.test.js tests/rarities.test.js`
+Expected: FAIL — cannot resolve `../js/sets.js` and `../js/rarities.js`
 
 - [ ] **Step 3: Write the implementations**
 
@@ -353,7 +441,7 @@ export function sortSetsNewestFirst(sets) {
   return [...sets].sort((a, b) => (b.releasedAt || "").localeCompare(a.releasedAt || ""));
 }
 
-/** "Attack of the Vine! (2026)" — the year helps distinguish promo sets. */
+/** "Attack of the Vine! (2026)" — the year helps tell promo sets apart. */
 export function setLabel(set) {
   const year = (set.releasedAt || "").slice(0, 4);
   return year ? `${set.name} (${year})` : set.name;
@@ -384,9 +472,9 @@ export function rarityLabel(rarity) {
 }
 
 /**
- * Copies wanted by default. Anything not listed — secret rarities today, and
- * whatever Ravensburger invents later — is zero, so an unknown rarity shows up
- * as a field set to 0 rather than breaking the page.
+ * Copies wanted by default. Anything not listed — the secret rarities today,
+ * and whatever Ravensburger invents later — is zero, so an unknown rarity
+ * appears as a field set to 0 rather than breaking the page.
  */
 export function defaultQuantityFor(rarity) {
   return DEFAULT_QUANTITIES[rarityKey(rarity)] ?? 0;
@@ -404,7 +492,7 @@ export function raritiesInSet(cards) {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `node --test tests/sets.test.js tests/rarities.test.js`
+Run: `npx vitest run tests/sets.test.js tests/rarities.test.js`
 Expected: PASS, 13 tests
 
 - [ ] **Step 5: Commit**
@@ -424,17 +512,16 @@ git commit -m "Add set ordering and rarity defaults"
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `parseCsv(text) -> Array<Array<string>>`, `normaliseSetNumber(value) -> string`, `parseDreambornCsv(text) -> {rows, unparsed}` where each row is `{setCode, collectorNumber, variant, count}`, `ownedForSet(rows, setCode) -> Map<string, {normal, foil}>`, and `PARSERS: {dreamborn: parseDreambornCsv}`.
+- Produces: `parseCsv(text) -> Array<Array<string>>`, `normaliseSetNumber(value) -> string`, `parseDreambornCsv(text) -> {rows, unparsed}` where each row is `{setCode, collectorNumber, variant, count}`, `ownedForSet(rows, setCode) -> Map<string, {normal, foil}>`, `PARSERS: {dreamborn: parseDreambornCsv}`.
 
-The `PARSERS` registry is the seam for other collection exports later. Nothing else is built for that now.
+`PARSERS` is the seam for other collection exports later. Nothing else is built for that now.
 
 - [ ] **Step 1: Write the failing tests**
 
 Create `tests/collection.test.js`:
 
 ```javascript
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
 import {
   PARSERS,
@@ -449,38 +536,38 @@ const HEADER = "Set Number,Card Number,Variant,Count,Name,Color,Rarity";
 // --- parseCsv -----------------------------------------------------------
 
 test("parseCsv splits plain rows", () => {
-  assert.deepEqual(parseCsv("a,b\n1,2"), [["a", "b"], ["1", "2"]]);
+  expect(parseCsv("a,b\n1,2")).toEqual([["a", "b"], ["1", "2"]]);
 });
 
 test("parseCsv keeps commas inside quoted fields", () => {
-  // Real card names contain commas, which is why this cannot be split(",").
+  // Real card names contain commas, which is why this cannot be a split(",").
   const rows = parseCsv('005,1,normal,4,"Malicious, Mean, and Scary",Amber,Rare');
 
-  assert.equal(rows[0][4], "Malicious, Mean, and Scary");
-  assert.equal(rows[0].length, 7);
+  expect(rows[0][4]).toBe("Malicious, Mean, and Scary");
+  expect(rows[0]).toHaveLength(7);
 });
 
 test("parseCsv unescapes doubled quotes", () => {
-  assert.deepEqual(parseCsv('"He said ""hi""",2'), [['He said "hi"', "2"]]);
+  expect(parseCsv('"He said ""hi""",2')).toEqual([['He said "hi"', "2"]]);
 });
 
 test("parseCsv tolerates carriage returns and a trailing newline", () => {
-  assert.deepEqual(parseCsv("a,b\r\n1,2\r\n"), [["a", "b"], ["1", "2"]]);
+  expect(parseCsv("a,b\r\n1,2\r\n")).toEqual([["a", "b"], ["1", "2"]]);
 });
 
 test("parseCsv ignores blank lines", () => {
-  assert.deepEqual(parseCsv("a,b\n\n1,2\n"), [["a", "b"], ["1", "2"]]);
+  expect(parseCsv("a,b\n\n1,2\n")).toEqual([["a", "b"], ["1", "2"]]);
 });
 
 // --- normaliseSetNumber -------------------------------------------------
 
 test("leading zeros are stripped to match Lorcast set codes", () => {
-  assert.equal(normaliseSetNumber("005"), "5");
-  assert.equal(normaliseSetNumber("013"), "13");
+  expect(normaliseSetNumber("005")).toBe("5");
+  expect(normaliseSetNumber("013")).toBe("13");
 });
 
 test("a non-numeric set number is left alone", () => {
-  assert.equal(normaliseSetNumber("P1"), "P1");
+  expect(normaliseSetNumber("P1")).toBe("P1");
 });
 
 // --- parseDreambornCsv --------------------------------------------------
@@ -490,15 +577,15 @@ test("parses the documented columns", () => {
     `${HEADER}\n005,135,normal,2,"Sugar Rush Speedway - Starting Line",Ruby,Rare`,
   );
 
-  assert.deepEqual(rows, [
+  expect(rows).toEqual([
     { setCode: "5", collectorNumber: "135", variant: "normal", count: 2 },
   ]);
 });
 
-test("column order is taken from the header, not assumed", () => {
+test("column order is read from the header, not assumed", () => {
   const { rows } = parseDreambornCsv("Count,Variant,Card Number,Set Number\n3,foil,7,006");
 
-  assert.deepEqual(rows, [
+  expect(rows).toEqual([
     { setCode: "6", collectorNumber: "7", variant: "foil", count: 3 },
   ]);
 });
@@ -506,18 +593,15 @@ test("column order is taken from the header, not assumed", () => {
 test("lettered collector numbers survive intact", () => {
   const { rows } = parseDreambornCsv(`${HEADER}\n003,4a,normal,1,"Dalmatian Puppy",Amber,Common`);
 
-  assert.equal(rows[0].collectorNumber, "4a");
+  expect(rows[0].collectorNumber).toBe("4a");
 });
 
 test("a missing required column is an error naming the column", () => {
-  assert.throws(
-    () => parseDreambornCsv("Set Number,Card Number,Count\n005,1,2"),
-    /Variant/,
-  );
+  expect(() => parseDreambornCsv("Set Number,Card Number,Count\n005,1,2")).toThrow(/Variant/);
 });
 
 test("an empty file is an error rather than an empty collection", () => {
-  assert.throws(() => parseDreambornCsv(""), /empty/i);
+  expect(() => parseDreambornCsv("")).toThrow(/empty/i);
 });
 
 test("rows with an unusable count are reported as unparsed, not dropped silently", () => {
@@ -525,54 +609,58 @@ test("rows with an unusable count are reported as unparsed, not dropped silently
     `${HEADER}\n005,1,normal,two,"Bad Row",Amber,Common\n005,2,normal,1,"Good Row",Amber,Common`,
   );
 
-  assert.equal(rows.length, 1);
-  assert.equal(unparsed.length, 1);
+  expect(rows).toHaveLength(1);
+  expect(unparsed).toHaveLength(1);
 });
 
 test("variant casing is normalised", () => {
   const { rows } = parseDreambornCsv(`${HEADER}\n005,1,Foil,1,"X",Amber,Common`);
 
-  assert.equal(rows[0].variant, "foil");
+  expect(rows[0].variant).toBe("foil");
 });
 
 // --- ownedForSet --------------------------------------------------------
 
 test("owned copies are indexed by collector number for one set", () => {
-  const rows = [
-    { setCode: "13", collectorNumber: "1", variant: "normal", count: 2 },
-    { setCode: "13", collectorNumber: "1", variant: "foil", count: 1 },
-    { setCode: "12", collectorNumber: "1", variant: "normal", count: 9 },
-  ];
+  const owned = ownedForSet(
+    [
+      { setCode: "13", collectorNumber: "1", variant: "normal", count: 2 },
+      { setCode: "13", collectorNumber: "1", variant: "foil", count: 1 },
+      { setCode: "12", collectorNumber: "1", variant: "normal", count: 9 },
+    ],
+    "13",
+  );
 
-  const owned = ownedForSet(rows, "13");
-
-  assert.deepEqual(owned.get("1"), { normal: 2, foil: 1 });
-  assert.equal(owned.size, 1);
+  expect(owned.get("1")).toEqual({ normal: 2, foil: 1 });
+  expect(owned.size).toBe(1);
 });
 
 test("repeated rows for the same card and variant are summed", () => {
   // The real export contains at least one duplicated key.
-  const rows = [
-    { setCode: "13", collectorNumber: "5", variant: "normal", count: 2 },
-    { setCode: "13", collectorNumber: "5", variant: "normal", count: 3 },
-  ];
+  const owned = ownedForSet(
+    [
+      { setCode: "13", collectorNumber: "5", variant: "normal", count: 2 },
+      { setCode: "13", collectorNumber: "5", variant: "normal", count: 3 },
+    ],
+    "13",
+  );
 
-  assert.deepEqual(ownedForSet(rows, "13").get("5"), { normal: 5, foil: 0 });
+  expect(owned.get("5")).toEqual({ normal: 5, foil: 0 });
 });
 
 test("a card with no rows is absent rather than zero-filled", () => {
-  assert.equal(ownedForSet([], "13").get("1"), undefined);
+  expect(ownedForSet([], "13").get("1")).toBeUndefined();
 });
 
 test("the parser registry exposes the dreamborn parser", () => {
-  assert.equal(PARSERS.dreamborn, parseDreambornCsv);
+  expect(PARSERS.dreamborn).toBe(parseDreambornCsv);
 });
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `node --test tests/collection.test.js`
-Expected: FAIL — cannot find module `../js/collection.js`
+Run: `npx vitest run tests/collection.test.js`
+Expected: FAIL — cannot resolve `../js/collection.js`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -584,8 +672,8 @@ Create `js/collection.js`:
 const REQUIRED_COLUMNS = ["Set Number", "Card Number", "Variant", "Count"];
 
 /**
- * Minimal RFC 4180 parse. Card names contain commas and are quoted, so
- * splitting on commas would corrupt every row containing one.
+ * Minimal RFC 4180 parse. Card names contain commas and are therefore quoted,
+ * so splitting on commas would corrupt every row containing one.
  */
 export function parseCsv(text) {
   const rows = [];
@@ -693,7 +781,7 @@ export const PARSERS = { dreamborn: parseDreambornCsv };
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `node --test tests/collection.test.js`
+Run: `npx vitest run tests/collection.test.js`
 Expected: PASS, 18 tests
 
 - [ ] **Step 5: Commit**
@@ -713,17 +801,16 @@ git commit -m "Add Dreamborn collection CSV parsing"
 
 **Interfaces:**
 - Consumes: `rarities.rarityKey`.
-- Produces: `compareCollectorNumbers(a, b) -> number`, `computeWants({cards, quantities, owned, countNormals, countFoils}) -> Array<{collectorNumber, name, version, rarity, quantity}>`, and `summarise(wants) -> {cards, copies}`.
+- Produces: `compareCollectorNumbers(a, b) -> number`, `computeWants({cards, quantities, owned, countNormals, countFoils}) -> Array<{collectorNumber, name, version, rarity, quantity}>`, `summarise(wants) -> {cards, copies}`.
 
-`owned` is a `Map` from collector number to `{normal, foil}`, or an empty `Map` when no collection is loaded. `quantities` is keyed by lowercased rarity.
+`owned` is a `Map` from collector number to `{normal, foil}`, empty when no collection is loaded. `quantities` is keyed by lowercased rarity.
 
 - [ ] **Step 1: Write the failing tests**
 
 Create `tests/wants.test.js`:
 
 ```javascript
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
 import { compareCollectorNumbers, computeWants, summarise } from "../js/wants.js";
 
@@ -748,159 +835,152 @@ function wants(overrides = {}) {
   });
 }
 
-test("each card gets the quantity configured for its rarity", () => {
-  assert.deepEqual(
-    wants().map((want) => [want.name, want.quantity]),
-    [["Woody", 3], ["Celia Mae", 2], ["Piercing Attack", 1], ["Chernabog", 4]],
-  );
-});
+function puppies(numbers) {
+  return numbers.map((collectorNumber) => ({
+    collectorNumber,
+    name: "Dalmatian Puppy",
+    version: "Tail Wagger",
+    rarity: "Common",
+  }));
+}
 
-test("a rarity set to zero produces no line", () => {
-  assert.ok(wants().every((want) => want.name !== "Elsa"));
+test("each card gets the quantity configured for its rarity", () => {
+  expect(wants().map((want) => [want.name, want.quantity])).toEqual([
+    ["Woody", 3],
+    ["Celia Mae", 2],
+    ["Piercing Attack", 1],
+    ["Chernabog", 4],
+  ]);
 });
 
 test("a rarity absent from the quantities produces no line", () => {
-  const result = computeWants({
-    cards: CARDS,
-    quantities: { common: 1 },
-    owned: new Map(),
-    countNormals: true,
-    countFoils: true,
-  });
+  expect(wants().every((want) => want.name !== "Elsa")).toBe(true);
+});
 
-  assert.deepEqual(result.map((want) => want.name), ["Piercing Attack"]);
+test("a rarity explicitly set to zero produces no line", () => {
+  const result = wants({ quantities: { ...QUANTITIES, rare: 0 } });
+
+  expect(result.every((want) => want.name !== "Woody")).toBe(true);
 });
 
 test("owned copies are subtracted from the target", () => {
   const owned = new Map([["1", { normal: 1, foil: 0 }]]);
 
-  assert.equal(wants({ owned }).find((want) => want.name === "Woody").quantity, 2);
+  expect(wants({ owned }).find((want) => want.name === "Woody").quantity).toBe(2);
 });
 
 test("a card owned in full produces no line", () => {
   const owned = new Map([["1", { normal: 3, foil: 0 }]]);
 
-  assert.ok(wants({ owned }).every((want) => want.name !== "Woody"));
+  expect(wants({ owned }).every((want) => want.name !== "Woody")).toBe(true);
 });
 
 test("owning more than wanted never produces a negative quantity", () => {
   const owned = new Map([["1", { normal: 99, foil: 0 }]]);
 
-  assert.ok(wants({ owned }).every((want) => want.name !== "Woody"));
+  expect(wants({ owned }).every((want) => want.name !== "Woody")).toBe(true);
 });
 
 test("foils count toward the target when the foil checkbox is ticked", () => {
   const owned = new Map([["1", { normal: 1, foil: 1 }]]);
 
-  assert.equal(wants({ owned }).find((want) => want.name === "Woody").quantity, 1);
+  expect(wants({ owned }).find((want) => want.name === "Woody").quantity).toBe(1);
 });
 
 test("unticking foils ignores foil copies", () => {
   const owned = new Map([["1", { normal: 1, foil: 1 }]]);
 
-  assert.equal(
-    wants({ owned, countFoils: false }).find((want) => want.name === "Woody").quantity,
-    2,
-  );
+  expect(wants({ owned, countFoils: false }).find((w) => w.name === "Woody").quantity).toBe(2);
 });
 
 test("unticking normals ignores normal copies", () => {
   const owned = new Map([["1", { normal: 1, foil: 1 }]]);
 
-  assert.equal(
-    wants({ owned, countNormals: false }).find((want) => want.name === "Woody").quantity,
-    2,
-  );
+  expect(wants({ owned, countNormals: false }).find((w) => w.name === "Woody").quantity).toBe(2);
 });
 
 test("unticking both counts nothing as owned", () => {
   const owned = new Map([["1", { normal: 3, foil: 3 }]]);
+  const result = wants({ owned, countNormals: false, countFoils: false });
 
-  assert.equal(
-    wants({ owned, countNormals: false, countFoils: false }).find((w) => w.name === "Woody").quantity,
-    3,
-  );
+  expect(result.find((want) => want.name === "Woody").quantity).toBe(3);
 });
 
-test("cards sharing a name and version are merged into one line", () => {
+test("cards sharing a name and version merge into one line", () => {
   // Into the Inklands prints five Dalmatian Puppy - Tail Wagger, 4a to 4e.
   // Cardmarket sees one product name, so five separate lines would be wrong.
-  const puppies = ["4a", "4b", "4c", "4d", "4e"].map((collectorNumber) => ({
-    collectorNumber,
-    name: "Dalmatian Puppy",
-    version: "Tail Wagger",
-    rarity: "Common",
-  }));
-
   const result = computeWants({
-    cards: puppies,
+    cards: puppies(["4a", "4b", "4c", "4d", "4e"]),
     quantities: { common: 1 },
     owned: new Map(),
     countNormals: true,
     countFoils: true,
   });
 
-  assert.equal(result.length, 1);
-  assert.equal(result[0].quantity, 5);
+  expect(result).toHaveLength(1);
+  expect(result[0].quantity).toBe(5);
 });
 
 test("merging happens after subtracting what you own", () => {
-  const puppies = ["4a", "4b", "4c"].map((collectorNumber) => ({
-    collectorNumber,
-    name: "Dalmatian Puppy",
-    version: "Tail Wagger",
-    rarity: "Common",
-  }));
-
   const result = computeWants({
-    cards: puppies,
+    cards: puppies(["4a", "4b", "4c"]),
     quantities: { common: 1 },
     owned: new Map([["4a", { normal: 1, foil: 0 }]]),
     countNormals: true,
     countFoils: true,
   });
 
-  assert.equal(result[0].quantity, 2);
+  expect(result[0].quantity).toBe(2);
 });
 
-test("cards with the same name but different versions stay separate", () => {
-  const cards = [
-    { collectorNumber: "1", name: "Elsa", version: "Snow Queen", rarity: "Common" },
-    { collectorNumber: "2", name: "Elsa", version: "Spirit of Winter", rarity: "Common" },
-  ];
-
+test("a merged line is ordered by the lowest collector number in the group", () => {
   const result = computeWants({
-    cards,
+    cards: puppies(["4e", "4a"]),
     quantities: { common: 1 },
     owned: new Map(),
     countNormals: true,
     countFoils: true,
   });
 
-  assert.equal(result.length, 2);
+  expect(result[0].collectorNumber).toBe("4a");
+});
+
+test("cards with the same name but different versions stay separate", () => {
+  const result = computeWants({
+    cards: [
+      { collectorNumber: "1", name: "Elsa", version: "Snow Queen", rarity: "Common" },
+      { collectorNumber: "2", name: "Elsa", version: "Spirit of Winter", rarity: "Common" },
+    ],
+    quantities: { common: 1 },
+    owned: new Map(),
+    countNormals: true,
+    countFoils: true,
+  });
+
+  expect(result).toHaveLength(2);
 });
 
 test("collector numbers sort numerically, not as text", () => {
-  assert.deepEqual(["10", "9", "100"].sort(compareCollectorNumbers), ["9", "10", "100"]);
+  expect(["10", "9", "100"].sort(compareCollectorNumbers)).toEqual(["9", "10", "100"]);
 });
 
 test("lettered collector numbers sort beside their number", () => {
-  assert.deepEqual(["40", "4a", "4"].sort(compareCollectorNumbers), ["4", "4a", "40"]);
+  expect(["40", "4a", "4"].sort(compareCollectorNumbers)).toEqual(["4", "4a", "40"]);
 });
 
 test("summarise counts distinct lines and total copies", () => {
-  assert.deepEqual(summarise(wants()), { cards: 4, copies: 10 });
+  expect(summarise(wants())).toEqual({ cards: 4, copies: 10 });
 });
 
 test("summarise of an empty list is zeroes", () => {
-  assert.deepEqual(summarise([]), { cards: 0, copies: 0 });
+  expect(summarise([])).toEqual({ cards: 0, copies: 0 });
 });
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `node --test tests/wants.test.js`
-Expected: FAIL — cannot find module `../js/wants.js`
+Run: `npx vitest run tests/wants.test.js`
+Expected: FAIL — cannot resolve `../js/wants.js`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -912,6 +992,9 @@ Create `js/wants.js`:
 import { rarityKey } from "./rarities.js";
 
 const NUMBER_THEN_SUFFIX = /^(\d+)(.*)$/;
+// A character that cannot occur in a card name, so "Ariel" + "Spectacular
+// Singer" can never collide with a name that happens to end in a space.
+const MERGE_SEPARATOR = "\u0000";
 
 /** "4" < "4a" < "40": compare the numeric part numerically, then the suffix. */
 export function compareCollectorNumbers(a, b) {
@@ -925,7 +1008,7 @@ export function compareCollectorNumbers(a, b) {
 /**
  * How many copies of each card are still needed.
  *
- * Cards sharing a name and version are merged into a single line, because
+ * Cards sharing a name and version merge into a single line, because
  * Cardmarket matches on product name: Into the Inklands prints five
  * "Dalmatian Puppy - Tail Wagger" and five identical lines would be nonsense.
  * Merging happens after subtracting owned copies, so owning 4a reduces the
@@ -943,7 +1026,7 @@ export function computeWants({ cards, quantities, owned, countNormals, countFoil
     const needed = Math.max(0, target - counted);
     if (needed === 0) continue;
 
-    const key = `${card.name}\u0000${card.version}`;
+    const key = `${card.name}${MERGE_SEPARATOR}${card.version}`;
     const existing = merged.get(key);
     if (existing) {
       existing.quantity += needed;
@@ -966,7 +1049,7 @@ export function computeWants({ cards, quantities, owned, countNormals, countFoil
   );
 }
 
-/** Distinct lines and total copies, for the summary line under the output. */
+/** Distinct lines and total copies, for the summary under the output. */
 export function summarise(wants) {
   return {
     cards: wants.length,
@@ -977,8 +1060,8 @@ export function summarise(wants) {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `node --test tests/wants.test.js`
-Expected: PASS, 17 tests
+Run: `npx vitest run tests/wants.test.js`
+Expected: PASS, 18 tests
 
 - [ ] **Step 5: Commit**
 
@@ -1004,8 +1087,7 @@ git commit -m "Add wants computation with collection diffing"
 Create `tests/render.test.js`:
 
 ```javascript
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
 import { SEPARATOR, renderDecklist, renderLine } from "../js/render.js";
 
@@ -1013,46 +1095,46 @@ const WOODY = { collectorNumber: "1", name: "Woody", version: "Helping a Friend"
 const PIERCING = { collectorNumber: "102", name: "Piercing Attack", version: "", quantity: 1 };
 
 test("a card with a version renders name then version", () => {
-  assert.equal(renderLine(WOODY), "3 Woody - Helping a Friend");
+  expect(renderLine(WOODY)).toBe("3 Woody - Helping a Friend");
 });
 
 test("a card without a version renders the name alone", () => {
-  assert.equal(renderLine(PIERCING), "1 Piercing Attack");
+  expect(renderLine(PIERCING)).toBe("1 Piercing Attack");
 });
 
 test("the separator is a spaced hyphen", () => {
-  assert.equal(SEPARATOR, " - ");
+  expect(SEPARATOR).toBe(" - ");
 });
 
 test("hyphens inside a name are untouched", () => {
   const tyler = { collectorNumber: "4", name: "Tyler Nguyen-Baker", version: "4*Town Fan", quantity: 1 };
 
-  assert.equal(renderLine(tyler), "1 Tyler Nguyen-Baker - 4*Town Fan");
+  expect(renderLine(tyler)).toBe("1 Tyler Nguyen-Baker - 4*Town Fan");
 });
 
 test("accented names are emitted verbatim", () => {
   const teKa = { collectorNumber: "7", name: "Te Kā", version: "Heartless", quantity: 3 };
 
-  assert.equal(renderLine(teKa), "3 Te Kā - Heartless");
+  expect(renderLine(teKa)).toBe("3 Te Kā - Heartless");
 });
 
 test("a decklist is one line per card, newline separated", () => {
-  assert.equal(renderDecklist([WOODY, PIERCING]), "3 Woody - Helping a Friend\n1 Piercing Attack");
+  expect(renderDecklist([WOODY, PIERCING])).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
 });
 
 test("an empty decklist is an empty string", () => {
-  assert.equal(renderDecklist([]), "");
+  expect(renderDecklist([])).toBe("");
 });
 
 test("a decklist has no trailing newline, so the textarea has no blank last line", () => {
-  assert.ok(!renderDecklist([WOODY]).endsWith("\n"));
+  expect(renderDecklist([WOODY]).endsWith("\n")).toBe(false);
 });
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `node --test tests/render.test.js`
-Expected: FAIL — cannot find module `../js/render.js`
+Run: `npx vitest run tests/render.test.js`
+Expected: FAIL — cannot resolve `../js/render.js`
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1079,15 +1161,10 @@ export function renderDecklist(wants) {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `node --test tests/render.test.js`
+Run: `npx vitest run tests/render.test.js`
 Expected: PASS, 8 tests
 
-- [ ] **Step 5: Run the whole suite**
-
-Run: `node --test tests/`
-Expected: PASS, 63 tests
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add js/render.js tests/render.test.js
@@ -1096,21 +1173,19 @@ git commit -m "Add Cardmarket paste format rendering"
 
 ---
 
-### Task 6: The page
+### Task 6: The page and its DOM helpers
 
 **Files:**
-- Create: `index.html`
-- Create: `styles.css`
-- Create: `js/ui.js`
-- Create: `js/main.js`
+- Create: `index.html`, `styles.css`, `js/dom.js`
+- Test: `tests/dom.test.js`
 
 **Interfaces:**
-- Consumes: everything above.
-- Produces: the page. No exports other modules depend on.
+- Consumes: `rarities.defaultQuantityFor`, `rarities.rarityLabel`, `sets.setLabel`.
+- Produces: `renderSetChoices(doc, sets, onChange) -> void`, `renderRarityInputs(doc, rarities, onChange) -> void`, `readQuantities(doc) -> object`, `setStatus(doc, id, message, isError?) -> void`, `showOutput(doc, text, summary) -> void`.
 
-This task has no unit tests: it is DOM wiring over logic already covered, and testing it would need a DOM implementation, which means a dependency. It is verified by hand in Step 5 against the real collection export.
+Every function takes the `document` explicitly. Nothing reaches for a global, which is what lets these run under jsdom without setting up ambient state.
 
-- [ ] **Step 1: Write the page structure**
+- [ ] **Step 1: Write the page**
 
 Create `index.html`:
 
@@ -1127,21 +1202,20 @@ Create `index.html`:
     <main>
       <h1>Lorcana Wants</h1>
       <p class="lede">
-        Build a Cardmarket wants list for a Lorcana set. Upload your collection and it will list only
-        the cards you still need.
+        Build a Cardmarket wants list for a Lorcana set. Upload your collection and it lists only the
+        cards you still need.
       </p>
 
       <section class="panel">
         <h2>How this works</h2>
         <ol>
-          <li>Pick a set. Card names and rarities are fetched live, so new sets appear here as soon
-            as they are published — nothing here needs updating when a set releases.</li>
+          <li>Pick a set. Names and rarities are fetched live, so new sets appear here as soon as
+            they are published — nothing here needs updating when a set releases.</li>
           <li>Say how many copies of each rarity you want. The defaults build a playset-style
             collection and leave the rare chase cards out.</li>
           <li>Optionally upload your collection export. Cards you already own are subtracted.</li>
-          <li>Copy the result into Cardmarket under
-            <strong>Buying → My Wants → your list</strong>, paste it into the decklist field, and
-            press Add.</li>
+          <li>Copy the result into Cardmarket under <strong>Buying → My Wants → your list</strong>,
+            paste it into the decklist field, and press Add.</li>
         </ol>
         <p class="note">
           Nothing is uploaded anywhere. Your collection file is read in your browser and never
@@ -1155,8 +1229,7 @@ Create `index.html`:
         <div id="sets" class="sets" role="radiogroup" aria-label="Set"></div>
         <p class="note">
           One set at a time
-          <span class="info" tabindex="0" role="note"
-            aria-label="Cardmarket matches wants by card name, and the same name can appear in more than one set. Generating one set at a time guarantees a reprint is never confused with the printing you meant.">
+          <span class="info" tabindex="0" role="note">
             i
             <span class="tip">
               Cardmarket matches wants by card name, and the same name can appear in more than one
@@ -1176,9 +1249,8 @@ Create `index.html`:
       <section class="panel">
         <h2>3. Your collection <span class="optional">(optional)</span></h2>
         <p>
-          Upload a Dreamborn CSV export. It needs the columns
-          <code>Set Number</code>, <code>Card Number</code>, <code>Variant</code> and
-          <code>Count</code>:
+          Upload a Dreamborn CSV export. It needs the columns <code>Set Number</code>,
+          <code>Card Number</code>, <code>Variant</code> and <code>Count</code>:
         </p>
         <pre><code>Set Number,Card Number,Variant,Count,Name,Color,Rarity
 005,135,normal,2,"Sugar Rush Speedway - Starting Line",Ruby,Rare
@@ -1203,8 +1275,6 @@ Create `index.html`:
 </html>
 ```
 
-- [ ] **Step 2: Write the styles**
-
 Create `styles.css`:
 
 ```css
@@ -1215,6 +1285,7 @@ Create `styles.css`:
   --line: #d8d8e0;
   --accent: #4a3f8f;
   --muted: #5f5f6d;
+  --warn: #b3261e;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -1224,6 +1295,7 @@ Create `styles.css`:
     --line: #35353f;
     --accent: #a89df0;
     --muted: #a0a0ae;
+    --warn: #f2b8b5;
   }
 }
 
@@ -1251,6 +1323,7 @@ h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
 
 .note { color: var(--muted); font-size: 0.9rem; }
 .optional { color: var(--muted); font-weight: normal; }
+.error { color: var(--warn); }
 
 .sets { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.35rem; }
 .sets label { display: flex; gap: 0.5rem; align-items: center; padding: 0.3rem; border-radius: 6px; }
@@ -1327,54 +1400,232 @@ button {
   z-index: 2;
 }
 
-.info:hover .tip, .info:focus .tip { opacity: 1; visibility: visible; }
-
-.error { color: #b3261e; }
-@media (prefers-color-scheme: dark) { .error { color: #f2b8b5; } }
+.info:hover .tip,
+.info:focus .tip,
+.info:focus-within .tip { opacity: 1; visibility: visible; }
 ```
 
-- [ ] **Step 3: Write the DOM wiring**
+- [ ] **Step 2: Write the failing tests**
 
-Create `js/ui.js`:
+Create `tests/dom.test.js`:
 
 ```javascript
-/** DOM rendering helpers. Everything here reads or writes the document. */
+/**
+ * @vitest-environment jsdom
+ */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import { beforeEach, expect, test } from "vitest";
+
+import {
+  readQuantities,
+  renderRarityInputs,
+  renderSetChoices,
+  setStatus,
+  showOutput,
+} from "../js/dom.js";
+
+const INDEX_HTML = readFileSync(fileURLToPath(new URL("../index.html", import.meta.url)), "utf8");
+
+const SETS = [
+  { code: "13", name: "Attack of the Vine!", releasedAt: "2026-07-17" },
+  { code: "12", name: "Wilds Unknown", releasedAt: "2026-05-08" },
+];
+
+beforeEach(() => {
+  document.body.innerHTML = INDEX_HTML;
+});
+
+test("the markup contains every element the code looks up", () => {
+  // Guards against renaming an id in the HTML without updating the code.
+  for (const id of [
+    "sets",
+    "sets-status",
+    "rarities",
+    "collection",
+    "collection-status",
+    "count-normals",
+    "count-foils",
+    "output",
+    "summary",
+    "copy",
+  ]) {
+    expect(document.getElementById(id), `missing #${id}`).not.toBeNull();
+  }
+});
+
+test("the page loads its script as a module from the expected path", () => {
+  const script = document.querySelector('script[type="module"]');
+
+  expect(script.getAttribute("src")).toBe("js/main.js");
+});
+
+test("a radio is rendered per set, labelled with name and year", () => {
+  renderSetChoices(document, SETS, () => {});
+
+  const labels = [...document.querySelectorAll("#sets label")].map((node) => node.textContent.trim());
+
+  expect(labels).toEqual(["Attack of the Vine! (2026)", "Wilds Unknown (2026)"]);
+});
+
+test("the first set is selected so the page has something to show immediately", () => {
+  renderSetChoices(document, SETS, () => {});
+
+  const [first, second] = document.querySelectorAll("#sets input");
+
+  expect(first.checked).toBe(true);
+  expect(second.checked).toBe(false);
+});
+
+test("the set radios share a name so only one can be chosen", () => {
+  renderSetChoices(document, SETS, () => {});
+
+  const names = new Set([...document.querySelectorAll("#sets input")].map((node) => node.name));
+
+  expect(names).toEqual(new Set(["set"]));
+});
+
+test("choosing a set reports its code", () => {
+  const chosen = [];
+  renderSetChoices(document, SETS, (code) => chosen.push(code));
+
+  document.querySelectorAll("#sets input")[1].click();
+
+  expect(chosen).toEqual(["12"]);
+});
+
+test("re-rendering replaces the previous set choices rather than appending", () => {
+  renderSetChoices(document, SETS, () => {});
+  renderSetChoices(document, SETS, () => {});
+
+  expect(document.querySelectorAll("#sets input")).toHaveLength(2);
+});
+
+test("a number input is rendered per rarity, defaulted from the rarity map", () => {
+  renderRarityInputs(document, ["Common", "Super_rare", "Enchanted"], () => {});
+
+  const inputs = [...document.querySelectorAll("#rarities input")];
+
+  expect(inputs.map((node) => node.value)).toEqual(["1", "4", "0"]);
+});
+
+test("rarity inputs are labelled readably", () => {
+  renderRarityInputs(document, ["Super_rare"], () => {});
+
+  expect(document.querySelector("#rarities label span").textContent).toBe("Super rare");
+});
+
+test("rarity inputs cannot go negative", () => {
+  renderRarityInputs(document, ["Common"], () => {});
+
+  expect(document.querySelector("#rarities input").min).toBe("0");
+});
+
+test("editing a rarity notifies the caller", () => {
+  let changes = 0;
+  renderRarityInputs(document, ["Common"], () => {
+    changes += 1;
+  });
+
+  const input = document.querySelector("#rarities input");
+  input.value = "2";
+  input.dispatchEvent(new Event("input"));
+
+  expect(changes).toBe(1);
+});
+
+test("readQuantities returns lowercased rarity keys", () => {
+  renderRarityInputs(document, ["Common", "Super_rare"], () => {});
+
+  expect(readQuantities(document)).toEqual({ common: 1, super_rare: 4 });
+});
+
+test("readQuantities treats a blank or negative entry as zero", () => {
+  renderRarityInputs(document, ["Common", "Rare"], () => {});
+  const [blank, negative] = document.querySelectorAll("#rarities input");
+  blank.value = "";
+  negative.value = "-3";
+
+  expect(readQuantities(document)).toEqual({ common: 0, rare: 0 });
+});
+
+test("setStatus writes the message", () => {
+  setStatus(document, "sets-status", "42 cards in this set.");
+
+  expect(document.getElementById("sets-status").textContent).toBe("42 cards in this set.");
+});
+
+test("setStatus marks errors and clears the mark when the next message is fine", () => {
+  setStatus(document, "sets-status", "It broke.", true);
+  expect(document.getElementById("sets-status").classList.contains("error")).toBe(true);
+
+  setStatus(document, "sets-status", "All good.");
+  expect(document.getElementById("sets-status").classList.contains("error")).toBe(false);
+});
+
+test("showOutput fills the textarea and summarises", () => {
+  showOutput(document, "3 Woody - Helping a Friend", { cards: 1, copies: 3 });
+
+  expect(document.getElementById("output").value).toBe("3 Woody - Helping a Friend");
+  expect(document.getElementById("summary").textContent).toBe("1 cards, 3 copies.");
+});
+
+test("showOutput explains an empty result instead of leaving a blank box", () => {
+  showOutput(document, "", { cards: 0, copies: 0 });
+
+  expect(document.getElementById("summary").textContent).toMatch(/nothing to want/i);
+});
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `npx vitest run tests/dom.test.js`
+Expected: FAIL — cannot resolve `../js/dom.js`
+
+- [ ] **Step 4: Write the implementation**
+
+Create `js/dom.js`:
+
+```javascript
+/**
+ * DOM rendering. Every function takes the document explicitly rather than
+ * reaching for a global, which is what makes these testable under jsdom.
+ */
 
 import { defaultQuantityFor, rarityLabel } from "./rarities.js";
 import { setLabel } from "./sets.js";
 
-export const el = (id) => document.getElementById(id);
-
-/** Radio buttons for the sets, newest first, with the first one selected. */
-export function renderSetChoices(sets, onChange) {
-  const container = el("sets");
+/** Radio buttons for the sets, with the first one selected. */
+export function renderSetChoices(doc, sets, onChange) {
+  const container = doc.getElementById("sets");
   container.replaceChildren();
 
   sets.forEach((set, index) => {
-    const label = document.createElement("label");
-    const input = document.createElement("input");
+    const label = doc.createElement("label");
+    const input = doc.createElement("input");
     input.type = "radio";
     input.name = "set";
     input.value = set.code;
     input.checked = index === 0;
     input.addEventListener("change", () => onChange(set.code));
 
-    label.append(input, document.createTextNode(setLabel(set)));
+    label.append(input, doc.createTextNode(setLabel(set)));
     container.append(label);
   });
 }
 
 /** A number input per rarity present in the set, defaulted from the rarity map. */
-export function renderRarityInputs(raritiesPresent, onChange) {
-  const container = el("rarities");
+export function renderRarityInputs(doc, raritiesPresent, onChange) {
+  const container = doc.getElementById("rarities");
   container.replaceChildren();
 
   for (const rarity of raritiesPresent) {
-    const label = document.createElement("label");
-    const span = document.createElement("span");
+    const label = doc.createElement("label");
+    const span = doc.createElement("span");
     span.textContent = rarityLabel(rarity);
 
-    const input = document.createElement("input");
+    const input = doc.createElement("input");
     input.type = "number";
     input.min = "0";
     input.value = String(defaultQuantityFor(rarity));
@@ -1387,164 +1638,423 @@ export function renderRarityInputs(raritiesPresent, onChange) {
 }
 
 /** The rarity inputs as a quantity map keyed the way computeWants expects. */
-export function readQuantities() {
+export function readQuantities(doc) {
   const quantities = {};
-  for (const input of el("rarities").querySelectorAll("input[data-rarity]")) {
+  for (const input of doc.getElementById("rarities").querySelectorAll("input[data-rarity]")) {
     const value = Number(input.value);
-    quantities[input.dataset.rarity.toLowerCase()] = Number.isFinite(value) && value > 0 ? value : 0;
+    quantities[input.dataset.rarity.toLowerCase()] =
+      Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
   }
   return quantities;
 }
 
-export function setStatus(id, message, isError = false) {
-  const node = el(id);
+export function setStatus(doc, id, message, isError = false) {
+  const node = doc.getElementById(id);
   node.textContent = message;
   node.classList.toggle("error", isError);
 }
 
-export function showOutput(text, { cards, copies }) {
-  el("output").value = text;
-  el("summary").textContent = cards
+export function showOutput(doc, text, { cards, copies }) {
+  doc.getElementById("output").value = text;
+  doc.getElementById("summary").textContent = cards
     ? `${cards} cards, ${copies} copies.`
     : "Nothing to want — either every rarity is set to 0, or you already own the lot.";
+}
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `npx vitest run tests/dom.test.js`
+Expected: PASS, 17 tests
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add index.html styles.css js/dom.js tests/dom.test.js
+git commit -m "Add the page and its DOM helpers"
+```
+
+---
+
+### Task 7: Wiring it together
+
+**Files:**
+- Create: `js/app.js`, `js/main.js`
+- Test: `tests/app.test.js`
+
+**Interfaces:**
+- Consumes: everything above.
+- Produces: `createApp({document, fetchImpl, clipboard}) -> {start, recalculate, loadCollectionText}`.
+
+`main.js` is the bootstrap and holds no logic. Everything the app does is reachable through `createApp` with a stubbed `fetch` and a jsdom `document`, so the whole flow is under test.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `tests/app.test.js`:
+
+```javascript
+/**
+ * @vitest-environment jsdom
+ */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import { beforeEach, expect, test, vi } from "vitest";
+
+import { createApp } from "../js/app.js";
+
+const INDEX_HTML = readFileSync(fileURLToPath(new URL("../index.html", import.meta.url)), "utf8");
+
+const SETS = {
+  results: [
+    { code: "12", name: "Wilds Unknown", released_at: "2026-05-08" },
+    { code: "13", name: "Attack of the Vine!", released_at: "2026-07-17" },
+  ],
+};
+
+const CARDS_13 = [
+  { collector_number: "1", name: "Woody", version: "Helping a Friend", rarity: "Rare" },
+  { collector_number: "2", name: "Piercing Attack", rarity: "Common" },
+  { collector_number: "3", name: "Elsa", version: "Spirit of Winter", rarity: "Enchanted" },
+];
+
+const CARDS_12 = [{ collector_number: "1", name: "Someone Else", rarity: "Common" }];
+
+const COLLECTION = [
+  "Set Number,Card Number,Variant,Count,Name,Color,Rarity",
+  '013,1,normal,1,"Woody - Helping a Friend",Amber,Rare',
+  '013,1,foil,1,"Woody - Helping a Friend",Amber,Rare',
+].join("\n");
+
+function stubFetch(overrides = {}) {
+  const responses = { "/sets": SETS, "/sets/13/cards": CARDS_13, "/sets/12/cards": CARDS_12, ...overrides };
+  return async (url) => {
+    const match = Object.keys(responses).find((suffix) => url.endsWith(suffix));
+    if (!match) return { ok: false, status: 404, json: async () => null };
+    const payload = responses[match];
+    if (payload instanceof Error) throw payload;
+    return { ok: true, status: 200, json: async () => payload };
+  };
+}
+
+function build(overrides = {}) {
+  return createApp({ document, fetchImpl: stubFetch(overrides), clipboard: { writeText: vi.fn() } });
+}
+
+const output = () => document.getElementById("output").value;
+const summary = () => document.getElementById("summary").textContent;
+const statusOf = (id) => document.getElementById(id).textContent;
+
+beforeEach(() => {
+  document.body.innerHTML = INDEX_HTML;
+});
+
+test("starting loads the sets newest first and selects the newest", async () => {
+  await build().start();
+
+  const labels = [...document.querySelectorAll("#sets label")].map((n) => n.textContent.trim());
+
+  expect(labels[0]).toBe("Attack of the Vine! (2026)");
+  expect(document.querySelector("#sets input").checked).toBe(true);
+});
+
+test("starting renders rarity inputs for the selected set only", async () => {
+  await build().start();
+
+  const labels = [...document.querySelectorAll("#rarities label span")].map((n) => n.textContent);
+
+  expect(labels).toEqual(["Rare", "Common", "Enchanted"]);
+});
+
+test("starting produces a wants list from the defaults", async () => {
+  await build().start();
+
+  expect(output()).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
+  expect(summary()).toBe("2 cards, 4 copies.");
+});
+
+test("a rarity defaulting to zero is left out of the list", async () => {
+  await build().start();
+
+  expect(output()).not.toMatch(/Elsa/);
+});
+
+test("raising a rarity from zero adds its cards", async () => {
+  await build().start();
+
+  const enchanted = [...document.querySelectorAll("#rarities input")].at(-1);
+  enchanted.value = "1";
+  enchanted.dispatchEvent(new Event("input"));
+
+  expect(output()).toMatch(/1 Elsa - Spirit of Winter/);
+});
+
+test("choosing another set reloads its cards and its rarities", async () => {
+  await build().start();
+
+  document.querySelectorAll("#sets input")[1].click();
+  await vi.waitFor(() => expect(output()).toBe("1 Someone Else"));
+
+  expect(statusOf("sets-status")).toMatch(/1 cards/);
+});
+
+test("loading a collection subtracts owned copies", async () => {
+  const app = build();
+  await app.start();
+
+  app.loadCollectionText(COLLECTION);
+
+  // Three Woody wanted, one normal and one foil owned, so one left.
+  expect(output()).toBe("1 Woody - Helping a Friend\n1 Piercing Attack");
+});
+
+test("loading a collection reports how many rows it read", async () => {
+  const app = build();
+  await app.start();
+
+  app.loadCollectionText(COLLECTION);
+
+  expect(statusOf("collection-status")).toMatch(/2 collection rows/);
+});
+
+test("unticking foils stops foil copies counting toward the target", async () => {
+  const app = build();
+  await app.start();
+  app.loadCollectionText(COLLECTION);
+
+  const foils = document.getElementById("count-foils");
+  foils.checked = false;
+  foils.dispatchEvent(new Event("change"));
+
+  expect(output()).toMatch(/^2 Woody - Helping a Friend/);
+});
+
+test("unticking both variants ignores the collection entirely", async () => {
+  const app = build();
+  await app.start();
+  app.loadCollectionText(COLLECTION);
+
+  for (const id of ["count-normals", "count-foils"]) {
+    const box = document.getElementById(id);
+    box.checked = false;
+    box.dispatchEvent(new Event("change"));
+  }
+
+  expect(output()).toMatch(/^3 Woody - Helping a Friend/);
+});
+
+test("a collection for a different set changes nothing", async () => {
+  const app = build();
+  await app.start();
+
+  app.loadCollectionText(
+    'Set Number,Card Number,Variant,Count\n012,1,normal,4',
+  );
+
+  expect(output()).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
+});
+
+test("a malformed collection reports the problem and keeps the previous list", async () => {
+  const app = build();
+  await app.start();
+  app.loadCollectionText(COLLECTION);
+
+  app.loadCollectionText("Nonsense,Header\n1,2");
+
+  expect(statusOf("collection-status")).toMatch(/missing/i);
+  expect(document.getElementById("collection-status").classList.contains("error")).toBe(true);
+  expect(output()).toBe("1 Woody - Helping a Friend\n1 Piercing Attack");
+});
+
+test("unmatched collection rows are reported rather than hidden", async () => {
+  const app = build();
+  await app.start();
+
+  app.loadCollectionText(`${COLLECTION}\n013,2/P2,normal,bad,"Promo",Amber,Promo`);
+
+  expect(statusOf("collection-status")).toMatch(/1 rows skipped/);
+});
+
+test("a failure loading the sets is shown, not swallowed", async () => {
+  await build({ "/sets": new TypeError("Failed to fetch") }).start();
+
+  expect(statusOf("sets-status")).toMatch(/could not reach/i);
+  expect(document.getElementById("sets-status").classList.contains("error")).toBe(true);
+});
+
+test("a failure loading a set's cards is shown", async () => {
+  await build({ "/sets/13/cards": new TypeError("Failed to fetch") }).start();
+
+  expect(statusOf("sets-status")).toMatch(/could not reach/i);
+});
+
+test("copying writes the output to the clipboard", async () => {
+  const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+  const app = createApp({ document, fetchImpl: stubFetch(), clipboard });
+  await app.start();
+
+  document.getElementById("copy").click();
+  await vi.waitFor(() => expect(clipboard.writeText).toHaveBeenCalledOnce());
+
+  expect(clipboard.writeText).toHaveBeenCalledWith("3 Woody - Helping a Friend\n1 Piercing Attack");
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `npx vitest run tests/app.test.js`
+Expected: FAIL — cannot resolve `../js/app.js`
+
+- [ ] **Step 3: Write the implementation**
+
+Create `js/app.js`:
+
+```javascript
+/**
+ * The application. Every dependency on the outside world — the document, the
+ * network, the clipboard — arrives as an argument, so the whole flow can be
+ * driven in a test.
+ */
+
+import { ownedForSet, parseDreambornCsv } from "./collection.js";
+import {
+  readQuantities,
+  renderRarityInputs,
+  renderSetChoices,
+  setStatus,
+  showOutput,
+} from "./dom.js";
+import { fetchSetCards, fetchSets } from "./lorcast.js";
+import { raritiesInSet } from "./rarities.js";
+import { renderDecklist } from "./render.js";
+import { sortSetsNewestFirst } from "./sets.js";
+import { computeWants, summarise } from "./wants.js";
+
+export function createApp({ document: doc, fetchImpl = fetch, clipboard = navigator.clipboard }) {
+  const state = { setCode: null, cards: [], collectionRows: null };
+
+  function recalculate() {
+    const owned = state.collectionRows
+      ? ownedForSet(state.collectionRows, state.setCode)
+      : new Map();
+
+    const wants = computeWants({
+      cards: state.cards,
+      quantities: readQuantities(doc),
+      owned,
+      countNormals: doc.getElementById("count-normals").checked,
+      countFoils: doc.getElementById("count-foils").checked,
+    });
+
+    showOutput(doc, renderDecklist(wants), summarise(wants));
+  }
+
+  async function selectSet(code) {
+    state.setCode = code;
+    setStatus(doc, "sets-status", "Loading cards…");
+    try {
+      state.cards = await fetchSetCards(code, fetchImpl);
+    } catch (error) {
+      state.cards = [];
+      setStatus(doc, "sets-status", error.message, true);
+      return;
+    }
+    setStatus(doc, "sets-status", `${state.cards.length} cards in this set.`);
+    renderRarityInputs(doc, raritiesInSet(state.cards), recalculate);
+    recalculate();
+  }
+
+  /**
+   * Split out from the file input so the parse-and-recalculate path is
+   * testable without a FileReader. A bad file keeps the previous collection
+   * rather than silently discarding work.
+   */
+  function loadCollectionText(text) {
+    try {
+      const { rows, unparsed } = parseDreambornCsv(text);
+      state.collectionRows = rows;
+      const skipped = unparsed.length > 0 ? ` ${unparsed.length} rows skipped.` : "";
+      setStatus(doc, "collection-status", `Loaded ${rows.length} collection rows.${skipped}`);
+    } catch (error) {
+      setStatus(doc, "collection-status", error.message, true);
+    }
+    recalculate();
+  }
+
+  function readFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => loadCollectionText(String(reader.result));
+    reader.onerror = () =>
+      setStatus(doc, "collection-status", "That file could not be read.", true);
+    reader.readAsText(file);
+  }
+
+  async function start() {
+    for (const id of ["count-normals", "count-foils"]) {
+      doc.getElementById(id).addEventListener("change", recalculate);
+    }
+    doc.getElementById("collection").addEventListener("change", (event) => {
+      const [file] = event.target.files;
+      if (file) readFile(file);
+    });
+    doc.getElementById("copy").addEventListener("click", async () => {
+      const button = doc.getElementById("copy");
+      await clipboard.writeText(doc.getElementById("output").value);
+      button.textContent = "Copied";
+      setTimeout(() => {
+        button.textContent = "Copy to clipboard";
+      }, 1500);
+    });
+
+    let sets;
+    try {
+      sets = sortSetsNewestFirst(await fetchSets(fetchImpl));
+    } catch (error) {
+      setStatus(doc, "sets-status", error.message, true);
+      return;
+    }
+    renderSetChoices(doc, sets, selectSet);
+    if (sets.length > 0) await selectSet(sets[0].code);
+  }
+
+  return { start, recalculate, loadCollectionText };
 }
 ```
 
 Create `js/main.js`:
 
 ```javascript
-/** Bootstrap and the recalculation loop. */
+/** Bootstrap: hand the app the real browser. Nothing else belongs here. */
 
-import { ownedForSet, parseDreambornCsv } from "./collection.js";
-import { fetchSetCards, fetchSets } from "./lorcast.js";
-import { renderDecklist } from "./render.js";
-import { raritiesInSet } from "./rarities.js";
-import { sortSetsNewestFirst } from "./sets.js";
-import {
-  el,
-  readQuantities,
-  renderRarityInputs,
-  renderSetChoices,
-  setStatus,
-  showOutput,
-} from "./ui.js";
-import { computeWants, summarise } from "./wants.js";
+import { createApp } from "./app.js";
 
-const state = { setCode: null, cards: [], collectionRows: null };
-
-function recalculate() {
-  if (state.cards.length === 0) return;
-
-  const owned = state.collectionRows
-    ? ownedForSet(state.collectionRows, state.setCode)
-    : new Map();
-
-  const wants = computeWants({
-    cards: state.cards,
-    quantities: readQuantities(),
-    owned,
-    countNormals: el("count-normals").checked,
-    countFoils: el("count-foils").checked,
-  });
-
-  showOutput(renderDecklist(wants), summarise(wants));
-}
-
-async function selectSet(code) {
-  state.setCode = code;
-  setStatus("sets-status", "Loading cards…");
-  try {
-    state.cards = await fetchSetCards(code);
-  } catch (error) {
-    setStatus("sets-status", error.message, true);
-    return;
-  }
-  setStatus("sets-status", `${state.cards.length} cards in this set.`);
-  renderRarityInputs(raritiesInSet(state.cards), recalculate);
-  recalculate();
-}
-
-function loadCollection(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const { rows, unparsed } = parseDreambornCsv(String(reader.result));
-      state.collectionRows = rows;
-      const skipped = unparsed.length ? ` ${unparsed.length} rows skipped.` : "";
-      setStatus("collection-status", `Loaded ${rows.length} collection rows.${skipped}`);
-    } catch (error) {
-      // Keep any previously loaded collection rather than silently dropping it.
-      setStatus("collection-status", error.message, true);
-    }
-    recalculate();
-  };
-  reader.onerror = () => setStatus("collection-status", "That file could not be read.", true);
-  reader.readAsText(file);
-}
-
-async function start() {
-  el("count-normals").addEventListener("change", recalculate);
-  el("count-foils").addEventListener("change", recalculate);
-  el("collection").addEventListener("change", (event) => {
-    const [file] = event.target.files;
-    if (file) loadCollection(file);
-  });
-  el("copy").addEventListener("click", async () => {
-    await navigator.clipboard.writeText(el("output").value);
-    el("copy").textContent = "Copied";
-    setTimeout(() => (el("copy").textContent = "Copy to clipboard"), 1500);
-  });
-
-  let sets;
-  try {
-    sets = sortSetsNewestFirst(await fetchSets());
-  } catch (error) {
-    setStatus("sets-status", error.message, true);
-    return;
-  }
-  renderSetChoices(sets, selectSet);
-  await selectSet(sets[0].code);
-}
-
-start();
+createApp({ document, fetchImpl: fetch.bind(window), clipboard: navigator.clipboard }).start();
 ```
 
-- [ ] **Step 4: Serve the page locally**
+- [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `python3 -m http.server 8000`
+Run: `npx vitest run tests/app.test.js`
+Expected: PASS, 16 tests
 
-Then open `http://localhost:8000`. A file:// URL will not work — ES modules require http.
+- [ ] **Step 5: Run the whole suite with coverage**
 
-- [ ] **Step 5: Verify by hand**
-
-Check each of these in the browser:
-
-1. The set list loads and *Attack of the Vine! (2026)* is first.
-2. Selecting it shows rarity inputs for Common, Uncommon, Rare, Super rare, Legendary, Epic, Enchanted, Iconic — with 1, 2, 3, 4, 4, 0, 0, 0.
-3. The output reads `207 cards, 453 copies` and begins `3 Woody - Helping a Friend`.
-4. Setting Epic to 1 raises the count to 225 cards, 471 copies.
-5. Upload the collection export. The count drops and the status line reports the rows loaded.
-6. Unticking *Count my foil copies* raises the count, because foils no longer count toward targets.
-7. Unticking both variant checkboxes returns the count to the full 207 / 453.
-8. Selecting *Into the Inklands* produces exactly one `Dalmatian Puppy - Tail Wagger` line, quantity 5.
-9. The `i` beside "One set at a time" shows the reprint explanation on hover and on keyboard focus.
-10. Copy to clipboard works and the button confirms.
+Run: `npm run coverage`
+Expected: PASS, 98 tests, and every coverage threshold met. If a threshold fails, add the missing test rather than lowering the threshold.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add index.html styles.css js/ui.js js/main.js
-git commit -m "Add the wants list page"
+git add js/app.js js/main.js tests/app.test.js
+git commit -m "Wire the app together with injected dependencies"
 ```
 
 ---
 
-### Task 7: Publish and document
+### Task 8: Publish and document
 
 **Files:**
 - Create: `README.md`
-- Modify: `.gitignore`
-- Modify: both superseded design documents under `docs/superpowers/` — see Step 1. Neither is deleted.
+- Modify: the two superseded documents under `docs/superpowers/`
 
 - [ ] **Step 1: Mark the superseded documents**
 
@@ -1555,19 +2065,10 @@ Add this line directly under the title of both `docs/superpowers/specs/2026-08-1
 > **Superseded** by the web tool design. Kept for its Cardmarket API research, which still holds.
 ```
 
-They stay in the repository. The Cardmarket API findings in the spec — that wants-list endpoints exist but are restricted to
-professional sellers, and that the Shopping Wizard has no endpoint — cost real effort to establish and will be wanted again.
+They stay in the repository. The Cardmarket findings — that wants-list endpoints exist but are restricted to professional
+sellers, and that the Shopping Wizard has no endpoint at all — cost real effort to establish and will be wanted again.
 
-- [ ] **Step 2: Replace the .gitignore**
-
-The Python entries no longer apply:
-
-```gitignore
-.DS_Store
-node_modules/
-```
-
-- [ ] **Step 3: Write the README**
+- [ ] **Step 2: Write the README**
 
 Create `README.md`:
 
@@ -1599,7 +2100,7 @@ Set Number,Card Number,Variant,Count,Name,Color,Rarity
 005,32,foil,1,"Amber Chromicon",Amber,Uncommon
 ```
 
-Rows that don't match a card in the selected set are reported and skipped. That is normal: promo cards use numbers like `2/P2`
+Rows that don't match a card in the selected set are counted and reported. That is normal: promo cards use numbers like `2/P2`
 and don't belong to a numbered set.
 
 ## Why one set at a time
@@ -1609,16 +2110,30 @@ Floodborn and Fabled. Generating one set per list means a reprint is never confu
 
 ## Development
 
-No build step and no dependencies.
+The deployed site has no build step: GitHub Pages serves the source files as they are. The tooling below is for tests only and
+never reaches the browser.
 
 ```bash
-python3 -m http.server 8000   # then open http://localhost:8000
-node --test tests/            # run the tests
+npm install
+npm test                      # run the suite
+npm run test:watch            # watch mode
+npm run coverage              # with coverage thresholds
+python3 -m http.server 8000   # serve locally at http://localhost:8000
 ```
 
-`js/lorcast.js` is the only module that touches the network, and it takes an injected `fetch` so tests never do. `sets`,
-`rarities`, `collection`, `wants` and `render` are pure functions with no DOM access, which is what keeps them testable without
-a toolchain. `ui.js` and `main.js` hold the DOM wiring.
+A `file://` URL will not work — ES modules need http.
+
+Tests run on every push and pull request via GitHub Actions. CI runs tests only; it does not build or deploy, because Pages
+publishes the branch directly.
+
+### How it is put together
+
+Dependencies are injected rather than reached for, which is what makes a frontend testable: `lorcast.js` takes a `fetch`,
+`app.js` takes a `document`, a `fetch` and a `clipboard`, and `main.js` is a three-line bootstrap that supplies the real ones.
+`sets`, `rarities`, `collection`, `wants` and `render` are pure functions and run without a DOM at all.
+
+The DOM tests load the real `index.html` from disk, so renaming an element id without updating the code fails the suite rather
+than the deployed page.
 
 ## Not supported
 
@@ -1629,28 +2144,44 @@ a toolchain. `ui.js` and `main.js` hold the DOM wiring.
   [restricted to professional sellers](https://apiv2.cardmarket.com/ws/documentation/API:Auth_Overview).
 ````
 
-- [ ] **Step 4: Commit and push**
+- [ ] **Step 3: Commit and push**
 
 ```bash
-git add README.md .gitignore docs/
+git add README.md docs/
 git commit -m "Add README and mark the CLI design superseded"
 git push
 ```
 
+- [ ] **Step 4: Confirm CI is green**
+
+```bash
+gh run list --limit 1
+gh run watch
+```
+
+A red run here means the suite passes locally but not on a clean checkout — usually a file missing from a commit. Fix before
+publishing.
+
 - [ ] **Step 5: Enable GitHub Pages**
 
 ```bash
-gh api -X POST repos/5uperdan/lorcana-wants/pages -f "source[branch]=main" -f "source[path]=/" 2>&1 | tail -3
-```
-
-If it reports the site already exists, that is fine. Confirm the URL:
-
-```bash
+gh api -X POST repos/5uperdan/lorcana-wants/pages -f "source[branch]=main" -f "source[path]=/"
 gh api repos/5uperdan/lorcana-wants/pages --jq .html_url
 ```
 
-- [ ] **Step 6: Verify the deployed site**
+If it reports the site already exists, that is fine.
 
-Wait for the first build, then open `https://5uperdan.github.io/lorcana-wants/` and repeat checks 1, 3 and 8 from Task 6 Step 5
-against the live page. A path that works locally but not on Pages means a case-sensitivity or relative-path mistake, so this
-check is not redundant.
+- [ ] **Step 6: Verify the deployed page by hand**
+
+The suite cannot prove a real browser boots the page, so check these on
+`https://5uperdan.github.io/lorcana-wants/` once the first build finishes:
+
+1. The set list loads and *Attack of the Vine! (2026)* is selected.
+2. The output reads `207 cards, 453 copies` and begins `3 Woody - Helping a Friend`.
+3. Setting Epic to 1 raises it to `225 cards, 471 copies`.
+4. Uploading a real collection export lowers the count and reports the rows read.
+5. Unticking *Count my foil copies* raises the count again.
+6. *Into the Inklands* produces exactly one `Dalmatian Puppy - Tail Wagger` line, quantity 5.
+7. The `i` beside "One set at a time" shows its explanation on hover and on keyboard focus.
+8. Copy to clipboard works and the button confirms.
+9. The browser console is free of errors.

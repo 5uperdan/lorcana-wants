@@ -147,17 +147,49 @@ js/
 ├── collection.js   # CSV parsing and the owned-copies index
 ├── wants.js        # target − owned → wants, and name aggregation
 ├── render.js       # wants → paste text
-├── ui.js           # DOM wiring
-└── main.js         # bootstrap
-tests/              # node --test, no dependencies
-package.json        # {"type": "module"} only — a manifest, not a build
+├── dom.js          # DOM rendering, taking the document as an argument
+├── app.js          # createApp({document, fetchImpl, clipboard})
+└── main.js         # bootstrap: hand createApp the real browser
+tests/              # Vitest; DOM tests opt into jsdom per file
 ```
 
-`lorcast` takes an injected `fetch` so tests never hit the network. `sets`, `rarities`, `collection`, `wants` and `render` are
-pure functions with no DOM access, which is what makes a build-free project testable: `node --test tests/` runs on stock Node
-with nothing installed. `ui` and `main` touch the DOM and are deliberately thin, verified by hand against the real export.
+No framework and no bundler. The page is small and cannot rot from a toolchain upgrade.
 
-No framework and no bundler. The page is small, the dependency count is zero, and it cannot rot from a toolchain upgrade.
+### Dependency injection, and why
+
+Nothing reaches for a global it could be handed instead. `lorcast.js` takes a `fetch`; `dom.js` takes a `document`; `app.js`
+takes all three of `document`, `fetch` and `clipboard`. `main.js` is a three-line bootstrap supplying the real ones.
+
+That single rule is what makes the DOM wiring testable, which matters because the wiring is where frontends actually break.
+`createApp` can be driven end to end under jsdom against the real `index.html` loaded from disk, with a stubbed network — so
+selecting a set, editing a rarity, uploading a collection, toggling foils and copying to the clipboard are all under test, not
+just the pure functions beneath them.
+
+### Testing
+
+Vitest, with jsdom for the two DOM modules. Pure modules run in Vitest's `node` environment; `dom.js` and `app.js` opt in with
+a `@vitest-environment jsdom` docblock, so only the tests that need a DOM pay for one.
+
+Test-first throughout: the failing test is written and watched to fail before the implementation exists.
+
+Two deliberate choices about scope:
+
+- **The DOM tests load the real `index.html` from disk** rather than a fixture, and assert that every element id the code looks
+  up exists. Renaming an id in the markup without updating the code fails the suite instead of the deployed page.
+- **There is no browser-driving test.** Vitest and jsdom cannot prove a real browser boots the page — a module resolution error
+  or a wrong script path would still pass. The id-and-script-path assertions cover the common cases; the rest is a short manual
+  checklist against the deployed site, which the plan spells out.
+
+Test tooling is a development dependency and nothing more. Vitest, jsdom and @testing-library/dom never appear in anything the
+browser loads, so testing rigour costs the deployed page nothing.
+
+### CI
+
+GitHub Actions runs the suite with coverage on every push to `main` and every pull request. The repository is public, so
+standard runners are free and have no minute allowance to exhaust.
+
+CI runs tests only. It does not build, bundle or deploy: Pages publishes the branch directly, so a red run never blocks a
+deploy and a green one never causes one. That keeps the deployment story honest — what is in the repository is what is served.
 
 ## Error handling
 
