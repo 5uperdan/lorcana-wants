@@ -7,6 +7,7 @@
 import { ownedForSet, parseDreambornCsv } from "./collection.js";
 import {
   readQuantities,
+  readSplitSize,
   renderRarityInputs,
   renderSetChoices,
   setStatus,
@@ -16,12 +17,21 @@ import { fetchSetCards, fetchSets } from "./lorcast.js";
 import { raritiesInSet } from "./rarities.js";
 import { renderDecklist } from "./render.js";
 import { orderSetsForPicker } from "./sets.js";
+import { splitWants } from "./split.js";
 import { computeWants, summarise } from "./wants.js";
 
 const COPIED_MESSAGE_MS = 1500;
 
 export function createApp({ document: doc, fetchImpl = fetch, clipboard = navigator.clipboard }) {
   const state = { setCode: null, cards: [], collectionRows: null, unreadable: 0 };
+
+  async function copyToClipboard(text, button) {
+    await clipboard.writeText(text);
+    button.textContent = "Copied";
+    setTimeout(() => {
+      button.textContent = "Copy to clipboard";
+    }, COPIED_MESSAGE_MS);
+  }
 
   /**
    * Say what the loaded collection means for the set on screen.
@@ -60,7 +70,12 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
       countFoils: doc.getElementById("count-foils").checked,
     });
 
-    showOutput(doc, renderDecklist(wants), summarise(wants));
+    const parts = splitWants(wants, readSplitSize(doc)).map((part) => ({
+      wants: part,
+      text: renderDecklist(part),
+    }));
+
+    showOutput(doc, parts, summarise(wants), copyToClipboard);
     reportCollection();
   }
 
@@ -111,19 +126,13 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
     for (const id of ["count-normals", "count-foils"]) {
       doc.getElementById(id).addEventListener("change", recalculate);
     }
+    for (const radio of doc.querySelectorAll('input[name="split"]')) {
+      radio.addEventListener("change", recalculate);
+    }
     doc.getElementById("collection").addEventListener("change", (event) => {
       const [file] = event.target.files;
       if (file) readFile(file);
     });
-    doc.getElementById("copy").addEventListener("click", async () => {
-      const button = doc.getElementById("copy");
-      await clipboard.writeText(doc.getElementById("output").value);
-      button.textContent = "Copied";
-      setTimeout(() => {
-        button.textContent = "Copy to clipboard";
-      }, COPIED_MESSAGE_MS);
-    });
-
     let sets;
     try {
       sets = orderSetsForPicker(await fetchSets(fetchImpl));

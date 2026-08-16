@@ -5,6 +5,7 @@ import { beforeEach, expect, test } from "vitest";
 
 import {
   readQuantities,
+  readSplitSize,
   renderRarityInputs,
   renderSetChoices,
   setStatus,
@@ -31,9 +32,8 @@ test("the markup contains every element the code looks up", () => {
     "collection-status",
     "count-normals",
     "count-foils",
-    "output",
+    "outputs",
     "summary",
-    "copy",
   ]) {
     expect(document.getElementById(id), `missing #${id}`).not.toBeNull();
   }
@@ -170,15 +170,77 @@ test("setStatus marks errors and clears the mark when the next message is fine",
   expect(document.getElementById("sets-status").classList.contains("error")).toBe(false);
 });
 
-test("showOutput fills the textarea and summarises", () => {
-  showOutput(document, "3 Woody - Helping a Friend", { cards: 1, copies: 3 });
+const part = (text, wants) => ({ text, wants });
+const someWants = (count) => Array.from({ length: count }, () => ({ quantity: 2 }));
 
-  expect(document.getElementById("output").value).toBe("3 Woody - Helping a Friend");
+test("showOutput fills a textarea and summarises", () => {
+  showOutput(document, [part("3 Woody - Helping a Friend", someWants(1))], { cards: 1, copies: 3 }, () => {});
+
+  expect(document.querySelector("#outputs textarea").value).toBe("3 Woody - Helping a Friend");
   expect(document.getElementById("summary").textContent).toBe("1 cards, 3 copies.");
 });
 
 test("showOutput explains an empty result instead of leaving a blank box", () => {
-  showOutput(document, "", { cards: 0, copies: 0 });
+  showOutput(document, [], { cards: 0, copies: 0 }, () => {});
 
   expect(document.getElementById("summary").textContent).toMatch(/nothing wanted yet/i);
+  expect(document.querySelectorAll("#outputs textarea")).toHaveLength(0);
+});
+
+test("a single part gets no list heading, because there is nothing to tell apart", () => {
+  showOutput(document, [part("a", someWants(1))], { cards: 1, copies: 2 }, () => {});
+
+  expect(document.querySelector(".part-label")).toBeNull();
+});
+
+test("several parts each get their own textarea, heading and copy button", () => {
+  showOutput(
+    document,
+    [part("a", someWants(100)), part("b", someWants(7))],
+    { cards: 107, copies: 214 },
+    () => {},
+  );
+
+  expect(document.querySelectorAll("#outputs textarea")).toHaveLength(2);
+  expect(document.querySelectorAll("#outputs button")).toHaveLength(2);
+  const labels = [...document.querySelectorAll(".part-label")].map((n) => n.textContent);
+  expect(labels[0]).toBe("List 1 of 2 — 100 cards, 200 copies");
+  expect(labels[1]).toBe("List 2 of 2 — 7 cards, 14 copies");
+});
+
+test("the summary says how many lists the wants are spread across", () => {
+  showOutput(document, [part("a", someWants(2)), part("b", someWants(1))], { cards: 3, copies: 6 }, () => {});
+
+  expect(document.getElementById("summary").textContent).toBe("3 cards, 6 copies across 2 lists.");
+});
+
+test("each copy button copies its own part, not the whole list", () => {
+  const copied = [];
+  showOutput(
+    document,
+    [part("first list", someWants(1)), part("second list", someWants(1))],
+    { cards: 2, copies: 4 },
+    (text) => copied.push(text),
+  );
+
+  document.querySelectorAll("#outputs button")[1].click();
+
+  expect(copied).toEqual(["second list"]);
+});
+
+test("re-rendering replaces the previous parts rather than appending", () => {
+  showOutput(document, [part("a", someWants(1)), part("b", someWants(1))], { cards: 2, copies: 4 }, () => {});
+  showOutput(document, [part("a", someWants(1))], { cards: 1, copies: 2 }, () => {});
+
+  expect(document.querySelectorAll("#outputs textarea")).toHaveLength(1);
+});
+
+test("the split size defaults to no limit", () => {
+  expect(readSplitSize(document)).toBe(0);
+});
+
+test("readSplitSize reports the chosen limit", () => {
+  document.querySelector('input[name="split"][value="150"]').checked = true;
+
+  expect(readSplitSize(document)).toBe(150);
 });

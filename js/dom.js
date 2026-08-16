@@ -70,9 +70,49 @@ export function setStatus(doc, id, message, isError = false) {
   node.classList.toggle("error", isError);
 }
 
-export function showOutput(doc, text, { cards, copies }) {
-  doc.getElementById("output").value = text;
+/** The chosen split size in unique cards, 0 meaning no limit. */
+export function readSplitSize(doc) {
+  const chosen = doc.querySelector('input[name="split"]:checked');
+  return chosen ? Number(chosen.value) : 0;
+}
+
+/**
+ * Render one block per part: a heading, the paste text, and its own copy
+ * button. Each part is a separate Cardmarket wants list, so they must be
+ * copied separately — one big box would invite pasting the lot into one list.
+ */
+export function showOutput(doc, parts, { cards, copies }, onCopy) {
+  const container = doc.getElementById("outputs");
+  container.replaceChildren();
+
   doc.getElementById("summary").textContent = cards
-    ? `${cards} cards, ${copies} copies.`
+    ? `${cards} cards, ${copies} copies${parts.length > 1 ? ` across ${parts.length} lists` : ""}.`
     : "Nothing wanted yet — raise a rarity above 0 to build a list.";
+
+  parts.forEach((part, index) => {
+    const block = doc.createElement("div");
+    block.className = "part";
+
+    if (parts.length > 1) {
+      const heading = doc.createElement("p");
+      heading.className = "note part-label";
+      const partCopies = part.wants.reduce((total, want) => total + want.quantity, 0);
+      heading.textContent = `List ${index + 1} of ${parts.length} — ${part.wants.length} cards, ${partCopies} copies`;
+      block.append(heading);
+    }
+
+    const textarea = doc.createElement("textarea");
+    textarea.readOnly = true;
+    textarea.rows = parts.length > 1 ? 10 : 16;
+    textarea.value = part.text;
+    textarea.setAttribute("aria-label", `Wants list ${index + 1}`);
+
+    const button = doc.createElement("button");
+    button.type = "button";
+    button.textContent = "Copy to clipboard";
+    button.addEventListener("click", () => onCopy(part.text, button));
+
+    block.append(textarea, button);
+    container.append(block);
+  });
 }

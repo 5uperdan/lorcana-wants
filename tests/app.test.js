@@ -66,7 +66,13 @@ function wantTheUsual() {
   setRarity("Common", 1);
 }
 
-const output = () => document.getElementById("output").value;
+const output = () => document.querySelector("#outputs textarea")?.value ?? "";
+const outputs = () => [...document.querySelectorAll("#outputs textarea")].map((n) => n.value);
+const chooseSplit = (value) => {
+  const radio = document.querySelector(`input[name="split"][value="${value}"]`);
+  radio.checked = true;
+  radio.dispatchEvent(new Event("change"));
+};
 const summary = () => document.getElementById("summary").textContent;
 const statusOf = (id) => document.getElementById(id).textContent;
 
@@ -259,13 +265,60 @@ test("a failure loading a set's cards is shown", async () => {
   expect(statusOf("sets-status")).toMatch(/could not reach/i);
 });
 
+test("choosing a split limit breaks the list into separate lists", async () => {
+  // Three commons wanted, split at two unique cards per list.
+  const app = createApp({
+    document,
+    fetchImpl: stubFetch({
+      "/sets/13/cards": [
+        { collector_number: "1", name: "One", rarity: "Common" },
+        { collector_number: "2", name: "Two", rarity: "Common" },
+        { collector_number: "3", name: "Three", rarity: "Common" },
+      ],
+    }),
+    clipboard: { writeText: vi.fn() },
+  });
+  await app.start();
+  setRarity("Common", 1);
+
+  // Retune one radio to a small limit so the fixture can demonstrate a split
+  // without needing a hundred cards.
+  const radio = document.querySelector('input[name="split"][value="100"]');
+  radio.value = "2";
+  radio.checked = true;
+  radio.dispatchEvent(new Event("change"));
+
+  expect(outputs()).toEqual(["1 One\n1 Two", "1 Three"]);
+  expect(summary()).toBe("3 cards, 3 copies across 2 lists.");
+});
+
+test("switching back to no limit rejoins the list", async () => {
+  await build().start();
+  wantTheUsual();
+  chooseSplit("100");
+
+  chooseSplit("0");
+
+  expect(outputs()).toHaveLength(1);
+  expect(summary()).toBe("2 cards, 4 copies.");
+});
+
+test("a list within the limit is not split", async () => {
+  await build().start();
+  wantTheUsual();
+
+  chooseSplit("150");
+
+  expect(outputs()).toHaveLength(1);
+});
+
 test("copying writes the output to the clipboard", async () => {
   const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
   const app = createApp({ document, fetchImpl: stubFetch(), clipboard });
   await app.start();
   wantTheUsual();
 
-  document.getElementById("copy").click();
+  document.querySelector("#outputs button").click();
   await vi.waitFor(() => expect(clipboard.writeText).toHaveBeenCalledOnce());
 
   expect(clipboard.writeText).toHaveBeenCalledWith("3 Woody - Helping a Friend\n1 Piercing Attack");

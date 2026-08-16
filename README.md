@@ -38,6 +38,15 @@ Epics shares its name and version with a regular printing. Since Cardmarket matc
 existing line rather than adding a new one, and the paste format has no way to say which printing you want. They default to 0
 for that reason; pick those out by hand.
 
+## Splitting into several lists
+
+A Cardmarket wants list holds a limited number of unique cards, and the Shopping Wizard works over one list at a time — so a
+whole set has to be spread across several lists to be shoppable. Pick **100** or **150** cards per list and the output comes out
+as separate blocks, each with its own copy button, ready to paste into a list of its own.
+
+The limit counts unique cards, not copies: four copies of one card is one entry. A 207-card set splits into three lists at 100,
+or two at 150.
+
 ## Why one set at a time
 
 Cardmarket matches wants by card name, and the same name can appear in more than one set — *I'm Stuck!* is in both Rise of the

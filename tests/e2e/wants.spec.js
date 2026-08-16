@@ -23,6 +23,13 @@ const CARDS_13 = [
 
 const CARDS_12 = [{ collector_number: "1", name: "Someone Else", rarity: "Common" }];
 
+/** 207 commons, matching the size of a real Lorcana set. */
+const CARDS_BIG = Array.from({ length: 207 }, (_, index) => ({
+  collector_number: String(index + 1),
+  name: `Filler Card ${index + 1}`,
+  rarity: "Common",
+}));
+
 const COLLECTION = fileURLToPath(new URL("./fixtures/collection.csv", import.meta.url));
 
 /** Intercept at the network layer, so the page still uses its real fetch. */
@@ -60,7 +67,7 @@ test("the page boots and produces a wants list", async ({ page }) => {
   // is what catches it.
   await wantTheUsual(page);
 
-  await expect(page.locator("#output")).toHaveValue(
+  await expect(page.locator("#outputs textarea").first()).toHaveValue(
     "3 Woody - Helping a Friend\n1 Piercing Attack",
   );
   await expect(page.locator("#summary")).toHaveText("2 cards, 4 copies.");
@@ -70,14 +77,15 @@ test("the list starts empty and says so", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.locator("#rarities input").first()).toHaveValue("0");
-  await expect(page.locator("#output")).toHaveValue("");
+  // No wants means no paste box at all, rather than an empty one to puzzle over.
+  await expect(page.locator("#outputs textarea")).toHaveCount(0);
   await expect(page.locator("#summary")).toContainText(/nothing wanted yet/i);
 });
 
 test("no console errors while doing the normal thing", async ({ page }) => {
   await page.goto("/");
   await wantTheUsual(page);
-  await expect(page.locator("#output")).not.toHaveValue("");
+  await expect(page.locator("#outputs textarea").first()).not.toHaveValue("");
 
   expect(errorsByPage.get(page)).toEqual([]);
 });
@@ -104,46 +112,46 @@ test("promo sets are still reachable, listed after the numbered ones", async ({ 
 test("changing a rarity updates the list", async ({ page }) => {
   await page.goto("/");
   await wantTheUsual(page);
-  await expect(page.locator("#output")).not.toHaveValue("");
+  await expect(page.locator("#outputs textarea").first()).not.toHaveValue("");
 
   await page.locator("#rarities input").last().fill("1");
 
   // toHaveValue, not toContainText: a textarea's text lives in its value, and
   // toContainText reads textContent, which is empty for every textarea.
-  await expect(page.locator("#output")).toHaveValue(/1 Elsa - Spirit of Winter/);
+  await expect(page.locator("#outputs textarea").first()).toHaveValue(/1 Elsa - Spirit of Winter/);
 });
 
 test("choosing another set loads its cards, keeping the quantities typed", async ({ page }) => {
   await page.goto("/");
   await wantTheUsual(page);
-  await expect(page.locator("#output")).not.toHaveValue("");
+  await expect(page.locator("#outputs textarea").first()).not.toHaveValue("");
 
   await page.locator("#sets input").nth(1).check();
 
-  await expect(page.locator("#output")).toHaveValue("1 Someone Else");
+  await expect(page.locator("#outputs textarea").first()).toHaveValue("1 Someone Else");
   await expect(page.locator('#rarities input[data-rarity="Common"]')).toHaveValue("1");
 });
 
 test("uploading a collection subtracts what you own", async ({ page }) => {
   await page.goto("/");
   await wantTheUsual(page);
-  await expect(page.locator("#output")).not.toHaveValue("");
+  await expect(page.locator("#outputs textarea").first()).not.toHaveValue("");
 
   await page.locator("#collection").setInputFiles(COLLECTION);
 
   await expect(page.locator("#collection-status")).toContainText("3 collection rows");
-  await expect(page.locator("#output")).toHaveValue("1 Woody - Helping a Friend");
+  await expect(page.locator("#outputs textarea").first()).toHaveValue("1 Woody - Helping a Friend");
 });
 
 test("unticking foils stops foils counting toward the target", async ({ page }) => {
   await page.goto("/");
   await wantTheUsual(page);
   await page.locator("#collection").setInputFiles(COLLECTION);
-  await expect(page.locator("#output")).toHaveValue("1 Woody - Helping a Friend");
+  await expect(page.locator("#outputs textarea").first()).toHaveValue("1 Woody - Helping a Friend");
 
   await page.locator("#count-foils").uncheck();
 
-  await expect(page.locator("#output")).toHaveValue("2 Woody - Helping a Friend");
+  await expect(page.locator("#outputs textarea").first()).toHaveValue("2 Woody - Helping a Friend");
 });
 
 test("the reprint explainer opens on keyboard focus, not only on hover", async ({ page }) => {
@@ -168,11 +176,11 @@ test("copying puts the list on the clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
   await wantTheUsual(page);
-  await expect(page.locator("#output")).not.toHaveValue("");
+  await expect(page.locator("#outputs textarea").first()).not.toHaveValue("");
 
-  await page.locator("#copy").click();
+  await page.locator("#outputs button").first().click();
 
-  await expect(page.locator("#copy")).toHaveText("Copied");
+  await expect(page.locator("#outputs button").first()).toHaveText("Copied");
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
   expect(clipboard).toBe("3 Woody - Helping a Friend\n1 Piercing Attack");
 });
@@ -196,7 +204,7 @@ test("the layout holds together on a phone-sized screen", async ({ page }) => {
   });
   expect(preScrolls).toBe(true);
 
-  await expect(page.locator("#output")).not.toHaveValue("");
+  await expect(page.locator("#outputs textarea").first()).not.toHaveValue("");
 });
 
 test("the reprint explainer fits the screen when opened on a phone", async ({ page }) => {
@@ -211,6 +219,52 @@ test("the reprint explainer fits the screen when opened on a phone", async ({ pa
     return left >= 0 && right <= window.innerWidth;
   });
   expect(fits).toBe(true);
+});
+
+test("splitting at 100 breaks a full set into three pasteable lists", async ({ page }) => {
+  // A Cardmarket wants list holds a limited number of unique cards, so a whole
+  // set has to be spread across several lists.
+  await page.route("**/v0/sets/13/cards", (route) => route.fulfill({ json: CARDS_BIG }));
+  await page.goto("/");
+  await page.locator('#rarities input[data-rarity="Common"]').fill("1");
+  await expect(page.locator("#summary")).toHaveText("207 cards, 207 copies.");
+
+  await page.locator('input[name="split"][value="100"]').check();
+
+  await expect(page.locator("#outputs textarea")).toHaveCount(3);
+  await expect(page.locator("#summary")).toHaveText("207 cards, 207 copies across 3 lists.");
+  await expect(page.locator(".part-label").first()).toHaveText(
+    "List 1 of 3 — 100 cards, 100 copies",
+  );
+
+  const lines = await page.locator("#outputs textarea").last().inputValue();
+  expect(lines.split("\n")).toHaveLength(7);
+});
+
+test("splitting at 150 gives two lists, and no limit gives one", async ({ page }) => {
+  await page.route("**/v0/sets/13/cards", (route) => route.fulfill({ json: CARDS_BIG }));
+  await page.goto("/");
+  await page.locator('#rarities input[data-rarity="Common"]').fill("1");
+
+  await page.locator('input[name="split"][value="150"]').check();
+  await expect(page.locator("#outputs textarea")).toHaveCount(2);
+
+  await page.locator('input[name="split"][value="0"]').check();
+  await expect(page.locator("#outputs textarea")).toHaveCount(1);
+});
+
+test("each list has its own copy button, copying only that list", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.route("**/v0/sets/13/cards", (route) => route.fulfill({ json: CARDS_BIG }));
+  await page.goto("/");
+  await page.locator('#rarities input[data-rarity="Common"]').fill("1");
+  await page.locator('input[name="split"][value="100"]').check();
+
+  await page.locator("#outputs button").last().click();
+
+  const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clipboard.split("\n")).toHaveLength(7);
+  expect(clipboard).toContain("1 Filler Card 207");
 });
 
 test("an unreachable API is reported rather than leaving a blank page", async ({ page }) => {

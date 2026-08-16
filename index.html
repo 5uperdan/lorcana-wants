@@ -88,9 +88,19 @@
 
       <section class="panel">
         <h2>4. Your wants list</h2>
+        <fieldset class="split">
+          <legend>Split into separate lists</legend>
+          <label><input type="radio" name="split" value="0" checked /> No limit</label>
+          <label><input type="radio" name="split" value="100" /> 100 cards per list</label>
+          <label><input type="radio" name="split" value="150" /> 150 cards per list</label>
+        </fieldset>
+        <p class="note">
+          A Cardmarket wants list holds a limited number of unique cards, and the Shopping Wizard
+          works over one list at a time — so a whole set has to be spread across several lists to be
+          shoppable. The limit counts unique cards, not copies: four copies of one card is one entry.
+        </p>
         <p id="summary" class="note"></p>
-        <textarea id="output" readonly rows="16" aria-label="Wants list"></textarea>
-        <button id="copy" type="button">Copy to clipboard</button>
+        <div id="outputs"></div>
       </section>
     </main>
     <script type="module" src="js/main.js"></script>
