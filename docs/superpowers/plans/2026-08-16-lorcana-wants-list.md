@@ -4,7 +4,7 @@
 
 **Goal:** A non-interactive Python CLI that downloads Lorcana card data once and writes a Cardmarket paste-ready wants-list file for every set that doesn't already have one.
 
-**Architecture:** Five small modules with one responsibility each. `lorcana` is the only code that touches the network; `config` reads `wants.toml`; `sets`, `selection` and `render` are pure functions over plain dicts and dataclasses; `cli` wires them together and does the file I/O. No interactive input anywhere, so every module is testable.
+**Architecture:** Five small modules with one responsibility each. `lorcana` is the only code that touches the network; `config` reads the TOML quantity files; `sets`, `selection` and `render` are pure functions over plain dicts and dataclasses; `cli` wires them together and does the file I/O. No interactive input anywhere, so every module is testable.
 
 **Tech Stack:** Python 3.11+, standard library only at runtime (`urllib.request`, `json`, `csv`, `argparse`, `dataclasses`, `pathlib`). `pytest` for tests.
 
@@ -16,8 +16,9 @@
 - **Package lives at the repository root** as `cardmarket_wants/`, not under `src/`, so `python -m cardmarket_wants` works from a clean checkout with no install step.
 - **Tests never touch the network.** `urlopen` is monkeypatched wherever fetching is exercised.
 - **Output line format:** `<quantity> <name>` for titleless cards, `<quantity> <name> - <title>` otherwise. Separator default is `" - "` — a plain hyphen with a space either side. No expansion qualifier is ever emitted.
-- **Quantities live in `wants.toml`**, a committed config file listing every known rarity, including the unwanted ones set to `0`. `0` means excluded. A rarity absent from the file is also excluded, so an unrecognised rarity is never an error.
-- **Shipped quantities:** `common=1, uncommon=2, rare=3, super_rare=4, legendary=4`; `epic`, `enchanted`, `iconic`, `special`, `unreleased`, `challenge24`, `top1` all `0`.
+- **Quantities live in TOML config files.** `default.toml` is what runs unless `--config` names another. `template.toml` lists every rarity at `0` as a starting point to copy. Both are committed.
+- **`0` means excluded**, and a rarity absent from the file is excluded too, so an unrecognised rarity is never an error.
+- **`default.toml` quantities:** `common=1, uncommon=2, rare=3, super_rare=4, legendary=4`; `epic`, `enchanted`, `iconic`, `special`, `unreleased`, `challenge24`, `top1` all `0`.
 - **Set codes are lowercased** for filenames and all comparisons, because the API uses `atv` in card records but `AtV` in its endpoint paths.
 - **Names are emitted verbatim as UTF-8.** No transliteration, no accent folding. All file reads and writes pass `encoding="utf-8"`.
 - Card data source: `https://api-lorcana.com/cards`, cached at `.cache/lorcana-cards.json`.
@@ -426,7 +427,7 @@ def test_unrecognised_rarities_are_skipped_not_fatal():
 
 
 def test_a_zero_quantity_excludes_a_rarity():
-    # wants.toml lists unwanted rarities explicitly as 0 rather than omitting
+    # The config files list unwanted rarities explicitly as 0 rather than
     # them, so zero must behave exactly like absent.
     wants = select_wants(CARDS, "atv", {"common": 1, "rare": 0})
 
@@ -731,21 +732,27 @@ git commit -m "Add decklist and CSV rendering"
 ### Task 5: Configuration file
 
 **Files:**
-- Create: `wants.toml`
+- Create: `default.toml`
+- Create: `template.toml`
 - Create: `cardmarket_wants/config.py`
 - Test: `tests/test_config.py`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `DEFAULT_CONFIG: Path` (`Path("wants.toml")`), `ConfigError(ValueError)`, and `load_quantities(path: Path) -> dict[str, int]`, which raises `ConfigError` when the file is missing, malformed, or contains a bad value. Callers decide what a missing default file means.
+- Produces: `DEFAULT_CONFIG: Path` (`Path("default.toml")`), `ConfigError(ValueError)`, and `load_quantities(path: Path) -> dict[str, int]`, which raises `ConfigError` when the file is missing, malformed, or contains a bad value. Callers decide what a missing default file means.
 
-- [ ] **Step 1: Write the config file**
+- [ ] **Step 1: Write the two config files**
 
-Create `wants.toml` at the repository root. Every rarity that exists in the card data is listed, including the unwanted ones at
-`0`, so changing what you collect is editing a number rather than remembering a rarity name.
+Create `default.toml` at the repository root. This is what runs when no `--config` is given. Every rarity that exists in the card
+data is listed, including the unwanted ones at `0`, so changing what you collect is editing a number rather than remembering a
+rarity name.
 
 ```toml
 # How many copies of each rarity to want, per set.
+#
+# This file is the default. To collect something different, copy template.toml
+# to a file of your own and run with --config yours.toml. Leave this one alone
+# so there is always a known-good starting point.
 #
 # 0 means "don't want any" — the rarity is listed rather than omitted so the
 # full set of rarities is visible and switching one on is a one-character edit.
@@ -773,6 +780,39 @@ challenge24 = 0
 top1 = 0
 ```
 
+Create `template.toml` — every rarity at zero, so a new configuration is built by switching on only what is wanted. Copy it,
+don't edit it.
+
+```toml
+# A starting point for your own wants configuration. Everything is 0, so a
+# copy of this file generates nothing until you raise the rarities you want.
+#
+#   cp template.toml mine.toml
+#   # edit mine.toml
+#   python -m cardmarket_wants --config mine.toml
+#
+# 0 means "don't want any". Rarities not listed here are treated as 0 too.
+
+[quantities]
+# Main set rarities.
+common = 0
+uncommon = 0
+rare = 0
+super_rare = 0
+legendary = 0
+
+# Secret rarities — the chase cards, pulled far less often.
+epic = 0
+enchanted = 0
+iconic = 0
+
+# Promo, collection and event-only rarities.
+special = 0
+unreleased = 0
+challenge24 = 0
+top1 = 0
+```
+
 - [ ] **Step 2: Write the failing tests**
 
 Create `tests/test_config.py`:
@@ -780,7 +820,12 @@ Create `tests/test_config.py`:
 ```python
 import pytest
 
-from cardmarket_wants.config import DEFAULT_CONFIG, ConfigError, load_quantities
+from cardmarket_wants.config import (
+    DEFAULT_CONFIG,
+    TEMPLATE_CONFIG,
+    ConfigError,
+    load_quantities,
+)
 
 VALID = """
 [quantities]
@@ -790,7 +835,7 @@ epic = 0
 """
 
 
-def write(tmp_path, text, name="wants.toml"):
+def write(tmp_path, text, name="quantities.toml"):
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
     return path
@@ -847,7 +892,7 @@ def test_a_boolean_quantity_is_an_error(tmp_path):
         load_quantities(write(tmp_path, "[quantities]\ncommon = true\n"))
 
 
-def test_the_shipped_config_matches_the_agreed_quantities():
+def test_the_default_config_matches_the_agreed_quantities():
     quantities = load_quantities(DEFAULT_CONFIG)
 
     assert quantities["common"] == 1
@@ -858,6 +903,17 @@ def test_the_shipped_config_matches_the_agreed_quantities():
     assert quantities["epic"] == 0
     assert quantities["enchanted"] == 0
     assert quantities["iconic"] == 0
+
+
+def test_the_template_is_entirely_zero():
+    quantities = load_quantities(TEMPLATE_CONFIG)
+
+    assert set(quantities.values()) == {0}
+
+
+def test_the_template_covers_every_rarity_the_default_does():
+    # A copied template must not silently omit a rarity the default knows about.
+    assert set(load_quantities(TEMPLATE_CONFIG)) == set(load_quantities(DEFAULT_CONFIG))
 ```
 
 - [ ] **Step 3: Run the tests to verify they fail**
@@ -870,14 +926,15 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'cardmarket_wants.confi
 Create `cardmarket_wants/config.py`:
 
 ```python
-"""Read the rarity quantity configuration from wants.toml."""
+"""Read the rarity quantity configuration from a TOML file."""
 
 from __future__ import annotations
 
 import tomllib
 from pathlib import Path
 
-DEFAULT_CONFIG = Path("wants.toml")
+DEFAULT_CONFIG = Path("default.toml")
+TEMPLATE_CONFIG = Path("template.toml")
 
 
 class ConfigError(ValueError):
@@ -918,13 +975,13 @@ def load_quantities(path: Path) -> dict[str, int]:
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `python -m pytest tests/test_config.py -v`
-Expected: PASS, 11 tests
+Expected: PASS, 13 tests
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add wants.toml cardmarket_wants/config.py tests/test_config.py
-git commit -m "Add wants.toml rarity quantity configuration"
+git add default.toml template.toml cardmarket_wants/config.py tests/test_config.py
+git commit -m "Add rarity quantity configuration files"
 ```
 
 ---
@@ -938,7 +995,11 @@ git commit -m "Add wants.toml rarity quantity configuration"
 
 **Interfaces:**
 - Consumes: `lorcana.fetch_cards`, `lorcana.DEFAULT_CACHE`, `lorcana.FetchError`, `config.DEFAULT_CONFIG`, `config.ConfigError`, `config.load_quantities`, `sets.survey_sets`, `sets.SetInfo`, `selection.select_wants`, `selection.DEFAULT_QUANTITIES`, `selection.CardDataError`, `render.render_decklist`, `render.render_line`, `render.csv_rows`, `render.DEFAULT_SEPARATOR`.
-- Produces: `resolve_quantities(config_path: Path, explicit: bool) -> dict[str, int]`, `txt_path(out_dir: Path, code: str) -> Path`, `csv_path(out_dir: Path, code: str) -> Path`, `classify_sets(set_infos, out_dir, quantities, force=False) -> tuple[list[SetInfo], list[SetInfo], list[SetInfo]]`, and `main(argv: list[str] | None = None) -> int`.
+- Produces: `resolve_quantities(config_path: Path, explicit: bool) -> dict[str, int]`, `txt_path(out_dir: Path, code: str) -> Path`, `csv_path(out_dir: Path, code: str) -> Path`, and `main(argv: list[str] | None = None) -> int`.
+
+**Design note:** there is deliberately no pre-classification of sets into "will generate" and "won't". Whether a set produces
+anything is already answered by `select_wants` returning an empty list; deciding it a second time from `rarity_counts` and the
+quantity map would be the same rule written twice, free to drift apart. `main` walks the sets once and decides as it goes.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -951,7 +1012,6 @@ import pytest
 
 from cardmarket_wants import cli
 from cardmarket_wants.selection import DEFAULT_QUANTITIES
-from cardmarket_wants.sets import SetInfo
 
 QUANTITIES = {"common": 1, "rare": 3, "special": 0}
 
@@ -988,7 +1048,7 @@ def cached(tmp_path):
 
 @pytest.fixture
 def config(tmp_path):
-    path = tmp_path / "wants.toml"
+    path = tmp_path / "default.toml"
     path.write_text(CONFIG, encoding="utf-8")
     return path
 
@@ -1007,7 +1067,7 @@ def test_resolve_quantities_reads_the_config_file(config):
 
 
 def test_resolve_quantities_falls_back_when_the_default_file_is_absent(tmp_path, capsys):
-    quantities = cli.resolve_quantities(tmp_path / "wants.toml", explicit=False)
+    quantities = cli.resolve_quantities(tmp_path / "default.toml", explicit=False)
 
     assert quantities == DEFAULT_QUANTITIES
     assert "built-in defaults" in capsys.readouterr().out
@@ -1016,52 +1076,6 @@ def test_resolve_quantities_falls_back_when_the_default_file_is_absent(tmp_path,
 def test_resolve_quantities_raises_when_an_explicit_file_is_absent(tmp_path):
     with pytest.raises(cli.ConfigError, match="no configuration file"):
         cli.resolve_quantities(tmp_path / "typo.toml", explicit=True)
-
-
-# --- classify_sets ------------------------------------------------------
-
-
-def test_classify_sets_splits_pending_existing_and_empty(tmp_path):
-    infos = [
-        SetInfo("atv", {"common": 2}),
-        SetInfo("wun", {"common": 1}),
-        SetInfo("p1", {"special": 1}),
-    ]
-    cli.txt_path(tmp_path, "wun").parent.mkdir(parents=True, exist_ok=True)
-    cli.txt_path(tmp_path, "wun").write_text("1 Already Here\n", encoding="utf-8")
-
-    pending, existing, empty = cli.classify_sets(infos, tmp_path, QUANTITIES)
-
-    assert [i.code for i in pending] == ["atv"]
-    assert [i.code for i in existing] == ["wun"]
-    assert [i.code for i in empty] == ["p1"]
-
-
-def test_classify_sets_force_reclaims_existing_sets(tmp_path):
-    infos = [SetInfo("wun", {"common": 1})]
-    cli.txt_path(tmp_path, "wun").parent.mkdir(parents=True, exist_ok=True)
-    cli.txt_path(tmp_path, "wun").write_text("1 Already Here\n", encoding="utf-8")
-
-    pending, existing, empty = cli.classify_sets(infos, tmp_path, QUANTITIES, force=True)
-
-    assert [i.code for i in pending] == ["wun"]
-    assert existing == []
-
-
-def test_classify_sets_never_reclaims_an_empty_set_even_with_force(tmp_path):
-    pending, _, empty = cli.classify_sets(
-        [SetInfo("p1", {"special": 1})], tmp_path, QUANTITIES, force=True
-    )
-
-    assert pending == []
-    assert [i.code for i in empty] == ["p1"]
-
-
-def test_classify_sets_treats_a_zero_quantity_as_nothing_to_generate(tmp_path):
-    # "special" is present in QUANTITIES at 0, which must not make p1 pending.
-    _, _, empty = cli.classify_sets([SetInfo("p1", {"special": 1})], tmp_path, QUANTITIES)
-
-    assert [i.code for i in empty] == ["p1"]
 
 
 # --- main ---------------------------------------------------------------
@@ -1138,6 +1152,16 @@ def test_main_respects_edited_quantities(cached, tmp_path):
     assert cli.txt_path(out, "atv").read_text(encoding="utf-8") == "1 Woody - Helping a Friend\n"
 
 
+def test_an_all_zero_config_generates_nothing(cached, tmp_path):
+    # This is template.toml's behaviour: a fresh copy produces no files.
+    empty_config = tmp_path / "template-copy.toml"
+    empty_config.write_text("[quantities]\ncommon = 0\nrare = 0\nspecial = 0\n", encoding="utf-8")
+    out = tmp_path / "out"
+
+    assert run(cached, empty_config, out) == 0
+    assert list(out.iterdir()) == []
+
+
 def test_main_rejects_a_missing_explicit_config(cached, tmp_path, capsys):
     assert run(cached, tmp_path / "typo.toml", tmp_path / "out") == 2
     assert "no configuration file" in capsys.readouterr().err
@@ -1196,7 +1220,7 @@ from .config import DEFAULT_CONFIG, ConfigError, load_quantities
 from .lorcana import DEFAULT_CACHE, FetchError, fetch_cards
 from .render import DEFAULT_SEPARATOR, csv_rows, render_decklist, render_line
 from .selection import DEFAULT_QUANTITIES, CardDataError, select_wants
-from .sets import SetInfo, survey_sets
+from .sets import survey_sets
 
 PREVIEW_LINES = 5
 
@@ -1220,33 +1244,6 @@ def txt_path(out_dir: Path, code: str) -> Path:
 
 def csv_path(out_dir: Path, code: str) -> Path:
     return Path(out_dir) / f"{code}-wants.csv"
-
-
-def classify_sets(
-    set_infos: list[SetInfo],
-    out_dir: Path,
-    quantities: dict[str, int],
-    force: bool = False,
-) -> tuple[list[SetInfo], list[SetInfo], list[SetInfo]]:
-    """Split sets into (to generate, already generated, nothing to generate).
-
-    A set with no rarity wanted in a non-zero quantity yields no file at all —
-    writing an empty one would mark it permanently done and hide a later data
-    fix or config change.
-    """
-    pending: list[SetInfo] = []
-    existing: list[SetInfo] = []
-    empty: list[SetInfo] = []
-
-    for info in set_infos:
-        if not any(quantities.get(rarity, 0) > 0 for rarity in info.rarity_counts):
-            empty.append(info)
-        elif not force and txt_path(out_dir, info.code).exists():
-            existing.append(info)
-        else:
-            pending.append(info)
-
-    return pending, existing, empty
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1286,16 +1283,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    pending, existing, empty = classify_sets(
-        survey_sets(cards), args.out_dir, quantities, force=args.force
-    )
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    failures = 0
-    total_cards = 0
-    total_copies = 0
+    generated = existing = skipped = failures = 0
+    total_cards = total_copies = 0
 
-    for info in pending:
+    for info in survey_sets(cards):
+        destination = txt_path(args.out_dir, info.code)
+
+        if destination.exists() and not args.force:
+            print(f"  {info.code}: already generated, skipping")
+            existing += 1
+            continue
+
         try:
             wants = select_wants(cards, info.code, quantities)
         except CardDataError as exc:
@@ -1303,27 +1303,29 @@ def main(argv: list[str] | None = None) -> int:
             failures += 1
             continue
 
-        txt_path(args.out_dir, info.code).write_text(
-            render_decklist(wants, args.separator), encoding="utf-8"
-        )
+        # An empty result means nothing in this set is wanted. Writing the file
+        # anyway would mark the set permanently done and hide a later config
+        # change or data fix.
+        if not wants:
+            print(f"  {info.code}: nothing wanted ({', '.join(sorted(info.rarity_counts))})")
+            skipped += 1
+            continue
+
+        destination.write_text(render_decklist(wants, args.separator), encoding="utf-8")
         with csv_path(args.out_dir, info.code).open("w", newline="", encoding="utf-8") as handle:
             csv.writer(handle).writerows(csv_rows(wants))
 
         copies = sum(want.quantity for want in wants)
+        generated += 1
         total_cards += len(wants)
         total_copies += copies
-        print(f"  {info.code}: {len(wants)} cards, {copies} copies -> {txt_path(args.out_dir, info.code)}")
+        print(f"  {info.code}: {len(wants)} cards, {copies} copies -> {destination}")
         for want in wants[:PREVIEW_LINES]:
             print(f"      {render_line(want, args.separator)}")
 
-    for info in existing:
-        print(f"  {info.code}: already generated, skipping")
-    for info in empty:
-        print(f"  {info.code}: nothing to generate ({', '.join(sorted(info.rarity_counts))})")
-
     print(
-        f"\n{len(pending) - failures} generated, {len(existing)} existing, "
-        f"{len(empty)} skipped; {total_cards} cards, {total_copies} copies"
+        f"\n{generated} generated, {existing} existing, {skipped} skipped; "
+        f"{total_cards} cards, {total_copies} copies"
     )
     return 1 if failures else 0
 ```
@@ -1341,12 +1343,12 @@ raise SystemExit(main())
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python -m pytest tests/test_cli.py -v`
-Expected: PASS, 19 tests
+Expected: PASS, 16 tests
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `python -m pytest -v`
-Expected: PASS, 64 tests
+Expected: PASS, 63 tests
 
 - [ ] **Step 6: Commit**
 
@@ -1461,7 +1463,7 @@ Expected: `0 generated, 14 existing, 9 skipped; 0 cards, 0 copies`, no download 
 - [ ] **Step 5: Run the full suite now that a cache exists**
 
 Run: `python -m pytest -v`
-Expected: PASS, 68 tests — the four real-data tests now run instead of skipping.
+Expected: PASS, 67 tests — the four real-data tests now run instead of skipping.
 
 - [ ] **Step 6: Write the README**
 
@@ -1493,7 +1495,26 @@ Output lands in `out/`:
 
 ## Quantities
 
-Edit `wants.toml`. Every rarity is listed, with the ones you don't collect set to `0`:
+How many copies of each rarity to want is configuration, not code. Two files ship with the repository:
+
+| File | What it is |
+|---|---|
+| `default.toml` | What runs when you don't pass `--config`. One common, two uncommon, three rare, four super rare and legendary; secret rarities off. |
+| `template.toml` | Every rarity at `0`. A starting point to copy when you want something different. |
+
+**Copy, don't edit.** Both files are tracked in git, so editing them in place means your preferences show up as repository
+changes and a `git pull` can conflict with them. Make your own instead:
+
+```bash
+cp template.toml mine.toml
+# edit mine.toml — raise the rarities you want
+python -m cardmarket_wants --config mine.toml
+```
+
+Either file is a fine starting point: copy `template.toml` to switch on only what you want, or copy `default.toml` to start
+from the standard set and adjust.
+
+A config looks like this:
 
 ```toml
 [quantities]
@@ -1509,21 +1530,19 @@ iconic = 0
 ```
 
 `0` means excluded, so wanting one of each Epic is changing `epic = 0` to `epic = 1`. A rarity missing from the file is treated
-as `0` too, which is why a rarity added in a future set can't break a run.
+as `0` too, which is why a rarity introduced in a future set can't break a run.
 
-After changing quantities, regenerate:
+After changing quantities, regenerate over the top of the old files:
 
 ```bash
-python -m cardmarket_wants --force
+python -m cardmarket_wants --config mine.toml --force
 ```
-
-Keep a second file for a different collector and point at it with `--config theirs.toml`.
 
 ## Options
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--config` | `wants.toml` | Rarity quantity configuration |
+| `--config` | `default.toml` | Rarity quantity configuration file |
 | `--separator` | `" - "` | Separator between a card's name and its version subtitle |
 | `--out-dir` | `out` | Where files are written |
 | `--cache` | `.cache/lorcana-cards.json` | Card data cache |

@@ -59,9 +59,10 @@ The tool is non-interactive. One download of the card data, then for every set f
 skip; otherwise generate. Re-running is therefore cheap and safe, and a new Lorcana set is picked up simply by running it again.
 
 - **Existence check.** `out/<set>-wants.txt` is the marker. Its presence means that set is done.
-- **Sets with nothing to generate are skipped, not written.** Promo and collection sets (`p1`–`p4`, `c1`, `c2`, `d23`,
-  `worlds`, `pd1`) carry only rarities outside the quantity map, so they yield zero lines. Writing empty files for them would
-  mark them permanently done and hide a future data fix, so they are reported as skipped each run instead.
+- **Sets with nothing wanted are skipped, not written.** Promo and collection sets (`p1`–`p4`, `c1`, `c2`, `d23`, `worlds`,
+  `pd1`) carry only rarities configured at zero, so they yield zero lines. Writing empty files for them would mark them
+  permanently done and hide a future data fix or config change, so they are reported as skipped each run instead. The same
+  applies to every set when the configuration is an unmodified copy of `template.toml`.
 - **Set codes come from the card data** and are used lowercase in filenames (`atv`, `rotf`). Matching against existing files is
   case-insensitive, since the API is inconsistent with itself: card records carry `atv` while its `/set/{set}` endpoint expects
   `AtV`.
@@ -75,7 +76,12 @@ Against live data on 2026-08-16 this produces **14 files** covering 2,671 cards 
 
 ## Rarity handling
 
-Quantities live in `wants.toml`, a committed configuration file, so changing what you collect never means editing code:
+Quantities live in TOML configuration files, so changing what you collect never means editing code. Two ship with the
+repository: `default.toml`, used when `--config` is not given, and `template.toml`, which lists every rarity at `0` as a
+starting point to copy. Both are tracked in git and meant to be copied rather than edited, so a collector's own preferences
+don't show up as repository changes.
+
+`default.toml`:
 
 ```toml
 [quantities]
@@ -103,9 +109,9 @@ of each Epic" into a one-character edit. It also means the file doubles as docum
 `0` means excluded, and a rarity absent from the file is excluded too. So an unrecognised rarity is never an error: the card
 data is a moving target, and a rarity appearing in a future set must not stop the other sets from generating.
 
-`--config PATH` points at a different file — a second quantity set for another collector. A missing file at that explicit path
-is an error, since it is almost always a typo; a missing `wants.toml` falls back to the built-in defaults with a notice, so the
-tool still works when run from outside a checkout.
+`--config PATH` points at a copy — a second quantity set for another collector. A missing file at that explicit path is an
+error, since it is almost always a typo; a missing `default.toml` falls back to the built-in defaults with a notice, so the tool
+still works when run from outside a checkout.
 
 ## Output format
 
@@ -144,7 +150,7 @@ multiple values allowed per item) if API access is ever obtained.
 cardmarket_wants/
 ├── __main__.py     # python -m cardmarket_wants
 ├── lorcana.py      # fetch /cards with on-disk cache — the only network I/O
-├── config.py       # read wants.toml → rarity quantity map
+├── config.py       # read a TOML config → rarity quantity map
 ├── sets.py         # survey card data → set codes with per-rarity counts
 ├── selection.py    # set filter + rarity→quantity map → list[Want]
 ├── render.py       # Want → decklist line
@@ -159,8 +165,12 @@ the repository root rather than under `src/` precisely to keep that true — a `
 to import. `pytest` is the only development dependency.
 
 The boundaries: `sets`, `selection` and `render` are pure functions over plain data and carry the logic worth testing. `lorcana`
-is isolated so that everything else is testable without a network. With no prompt anywhere, `cli` is fully testable too — its
-only real logic is deciding which sets are missing, which is a pure comparison of discovered codes against directory contents.
+and `config` are the only modules that touch the filesystem or network, so everything else is testable in isolation. With no
+prompt anywhere, `cli` is fully testable too.
+
+`cli` walks the discovered sets once and decides per set: skip if a file exists, generate if `select_wants` returns anything,
+report and move on if it doesn't. There is no separate pass that predicts which sets will produce output — whether a set is
+worth writing is already answered by the selection itself, and deciding it twice invites the two answers to disagree.
 
 ### Outputs
 
@@ -172,7 +182,7 @@ only real logic is deciding which sets are missing, which is a pure comparison o
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--config` | `wants.toml` | Rarity→quantity configuration file |
+| `--config` | `default.toml` | Rarity→quantity configuration file |
 | `--separator` | `" - "` | Name/title separator |
 | `--out-dir` | `out/` | Output directory |
 | `--force` | off | Regenerate sets that already have files |
