@@ -4,7 +4,7 @@
 
 **Goal:** A non-interactive Python CLI that downloads Lorcana card data once and writes a Cardmarket paste-ready wants-list file for every set that doesn't already have one.
 
-**Architecture:** Four small modules with one responsibility each. `lorcana` is the only code that touches the network; `sets`, `selection` and `render` are pure functions over plain dicts and dataclasses; `cli` wires them together and does the file I/O. No interactive input anywhere, so every module is testable.
+**Architecture:** Five small modules with one responsibility each. `lorcana` is the only code that touches the network; `config` reads `wants.toml`; `sets`, `selection` and `render` are pure functions over plain dicts and dataclasses; `cli` wires them together and does the file I/O. No interactive input anywhere, so every module is testable.
 
 **Tech Stack:** Python 3.11+, standard library only at runtime (`urllib.request`, `json`, `csv`, `argparse`, `dataclasses`, `pathlib`). `pytest` for tests.
 
@@ -16,7 +16,8 @@
 - **Package lives at the repository root** as `cardmarket_wants/`, not under `src/`, so `python -m cardmarket_wants` works from a clean checkout with no install step.
 - **Tests never touch the network.** `urlopen` is monkeypatched wherever fetching is exercised.
 - **Output line format:** `<quantity> <name>` for titleless cards, `<quantity> <name> - <title>` otherwise. Separator default is `" - "` — a plain hyphen with a space either side. No expansion qualifier is ever emitted.
-- **Default quantity map:** `common=1, uncommon=2, rare=3, super_rare=4, legendary=4`. Every other rarity — including `epic`, `enchanted`, `iconic`, `special`, `unreleased`, `challenge24`, `top1` and any rarity not yet seen — is silently out of scope and must never raise.
+- **Quantities live in `wants.toml`**, a committed config file listing every known rarity, including the unwanted ones set to `0`. `0` means excluded. A rarity absent from the file is also excluded, so an unrecognised rarity is never an error.
+- **Shipped quantities:** `common=1, uncommon=2, rare=3, super_rare=4, legendary=4`; `epic`, `enchanted`, `iconic`, `special`, `unreleased`, `challenge24`, `top1` all `0`.
 - **Set codes are lowercased** for filenames and all comparisons, because the API uses `atv` in card records but `AtV` in its endpoint paths.
 - **Names are emitted verbatim as UTF-8.** No transliteration, no accent folding. All file reads and writes pass `encoding="utf-8"`.
 - Card data source: `https://api-lorcana.com/cards`, cached at `.cache/lorcana-cards.json`.
@@ -424,6 +425,20 @@ def test_unrecognised_rarities_are_skipped_not_fatal():
     assert [w.name for w in select_wants(cards, "p1")] == ["Real Card"]
 
 
+def test_a_zero_quantity_excludes_a_rarity():
+    # wants.toml lists unwanted rarities explicitly as 0 rather than omitting
+    # them, so zero must behave exactly like absent.
+    wants = select_wants(CARDS, "atv", {"common": 1, "rare": 0})
+
+    assert [w.name for w in wants] == ["Isabela Madrigal", "Piercing Attack"]
+
+
+def test_all_zero_quantities_yield_nothing():
+    every_rarity_off = dict.fromkeys(DEFAULT_QUANTITIES, 0)
+
+    assert select_wants(CARDS, "atv", every_rarity_off) == []
+
+
 def test_set_code_matching_is_case_insensitive():
     assert len(select_wants(CARDS, "AtV")) == 6
 
@@ -520,10 +535,11 @@ def select_wants(
 ) -> list[Want]:
     """Return the wanted cards from `set_code`, sorted by collector number.
 
-    Rarities absent from `quantities` are out of scope and skipped silently.
-    That covers the secret rarities (epic, enchanted, iconic), the promo-only
-    ones (special, unreleased, challenge24, top1), and any rarity Ravensburger
-    invents later — none of which should stop a run.
+    Rarities set to zero, and rarities absent from `quantities` entirely, are
+    both out of scope and skipped silently. That covers the secret rarities
+    (epic, enchanted, iconic), the promo-only ones (special, unreleased,
+    challenge24, top1), and any rarity Ravensburger invents later — none of
+    which should stop a run.
     """
     quantities = DEFAULT_QUANTITIES if quantities is None else quantities
     target = set_code.lower()
@@ -534,8 +550,8 @@ def select_wants(
             if str(variant.get("set", "")).lower() != target:
                 continue
 
-            quantity = quantities.get(variant.get("rarity"))
-            if quantity is None:
+            quantity = quantities.get(variant.get("rarity"), 0)
+            if quantity <= 0:
                 continue
 
             english = (card.get("languages") or {}).get("en") or {}
@@ -566,7 +582,7 @@ def select_wants(
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python -m pytest tests/test_selection.py -v`
-Expected: PASS, 12 tests
+Expected: PASS, 14 tests
 
 - [ ] **Step 5: Commit**
 
@@ -712,7 +728,208 @@ git commit -m "Add decklist and CSV rendering"
 
 ---
 
-### Task 5: CLI
+### Task 5: Configuration file
+
+**Files:**
+- Create: `wants.toml`
+- Create: `cardmarket_wants/config.py`
+- Test: `tests/test_config.py`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `DEFAULT_CONFIG: Path` (`Path("wants.toml")`), `ConfigError(ValueError)`, and `load_quantities(path: Path) -> dict[str, int]`, which raises `ConfigError` when the file is missing, malformed, or contains a bad value. Callers decide what a missing default file means.
+
+- [ ] **Step 1: Write the config file**
+
+Create `wants.toml` at the repository root. Every rarity that exists in the card data is listed, including the unwanted ones at
+`0`, so changing what you collect is editing a number rather than remembering a rarity name.
+
+```toml
+# How many copies of each rarity to want, per set.
+#
+# 0 means "don't want any" — the rarity is listed rather than omitted so the
+# full set of rarities is visible and switching one on is a one-character edit.
+#
+# Rarities not listed here are also treated as 0, so a rarity that Ravensburger
+# adds later will be ignored rather than break a run.
+
+[quantities]
+# Main set rarities.
+common = 1
+uncommon = 2
+rare = 3
+super_rare = 4
+legendary = 4
+
+# Secret rarities — the chase cards, pulled far less often.
+epic = 0
+enchanted = 0
+iconic = 0
+
+# Promo, collection and event-only rarities.
+special = 0
+unreleased = 0
+challenge24 = 0
+top1 = 0
+```
+
+- [ ] **Step 2: Write the failing tests**
+
+Create `tests/test_config.py`:
+
+```python
+import pytest
+
+from cardmarket_wants.config import DEFAULT_CONFIG, ConfigError, load_quantities
+
+VALID = """
+[quantities]
+common = 1
+rare = 3
+epic = 0
+"""
+
+
+def write(tmp_path, text, name="wants.toml"):
+    path = tmp_path / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_reads_the_quantities_section(tmp_path):
+    assert load_quantities(write(tmp_path, VALID)) == {"common": 1, "rare": 3, "epic": 0}
+
+
+def test_zero_is_kept_rather_than_dropped(tmp_path):
+    # Selection treats 0 as excluded; config's job is to report it faithfully.
+    assert load_quantities(write(tmp_path, VALID))["epic"] == 0
+
+
+def test_rarity_names_are_lowercased(tmp_path):
+    config = write(tmp_path, "[quantities]\nSuper_Rare = 4\n")
+
+    assert load_quantities(config) == {"super_rare": 4}
+
+
+def test_missing_file_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match="no configuration file"):
+        load_quantities(tmp_path / "absent.toml")
+
+
+def test_malformed_toml_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match="not valid TOML"):
+        load_quantities(write(tmp_path, "[quantities\ncommon = 1\n"))
+
+
+def test_missing_quantities_section_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match=r"\[quantities\]"):
+        load_quantities(write(tmp_path, "[something_else]\ncommon = 1\n"))
+
+
+def test_empty_quantities_section_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match=r"\[quantities\]"):
+        load_quantities(write(tmp_path, "[quantities]\n"))
+
+
+def test_a_negative_quantity_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match="zero or a positive whole number"):
+        load_quantities(write(tmp_path, "[quantities]\ncommon = -1\n"))
+
+
+def test_a_non_integer_quantity_is_an_error(tmp_path):
+    with pytest.raises(ConfigError, match="zero or a positive whole number"):
+        load_quantities(write(tmp_path, '[quantities]\ncommon = "three"\n'))
+
+
+def test_a_boolean_quantity_is_an_error(tmp_path):
+    # TOML booleans are ints in Python; they are not a quantity.
+    with pytest.raises(ConfigError, match="zero or a positive whole number"):
+        load_quantities(write(tmp_path, "[quantities]\ncommon = true\n"))
+
+
+def test_the_shipped_config_matches_the_agreed_quantities():
+    quantities = load_quantities(DEFAULT_CONFIG)
+
+    assert quantities["common"] == 1
+    assert quantities["uncommon"] == 2
+    assert quantities["rare"] == 3
+    assert quantities["super_rare"] == 4
+    assert quantities["legendary"] == 4
+    assert quantities["epic"] == 0
+    assert quantities["enchanted"] == 0
+    assert quantities["iconic"] == 0
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `python -m pytest tests/test_config.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'cardmarket_wants.config'`
+
+- [ ] **Step 4: Write the implementation**
+
+Create `cardmarket_wants/config.py`:
+
+```python
+"""Read the rarity quantity configuration from wants.toml."""
+
+from __future__ import annotations
+
+import tomllib
+from pathlib import Path
+
+DEFAULT_CONFIG = Path("wants.toml")
+
+
+class ConfigError(ValueError):
+    """The configuration file is missing, malformed, or holds a bad value."""
+
+
+def load_quantities(path: Path) -> dict[str, int]:
+    """Return the rarity to quantity map from `path`.
+
+    Zero is preserved rather than dropped: the file lists unwanted rarities
+    explicitly so they are visible and easy to switch on. Deciding that zero
+    means excluded is selection's job, not this function's.
+    """
+    path = Path(path)
+    try:
+        with path.open("rb") as handle:
+            document = tomllib.load(handle)
+    except FileNotFoundError:
+        raise ConfigError(f"no configuration file at {path}") from None
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"{path} is not valid TOML: {exc}") from None
+
+    section = document.get("quantities")
+    if not isinstance(section, dict) or not section:
+        raise ConfigError(f"{path} has no [quantities] section, or it is empty")
+
+    quantities: dict[str, int] = {}
+    for rarity, value in section.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ConfigError(
+                f"quantity for {rarity!r} in {path} must be zero or a positive "
+                f"whole number, got {value!r}"
+            )
+        quantities[rarity.lower()] = value
+    return quantities
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `python -m pytest tests/test_config.py -v`
+Expected: PASS, 11 tests
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add wants.toml cardmarket_wants/config.py tests/test_config.py
+git commit -m "Add wants.toml rarity quantity configuration"
+```
+
+---
+
+### Task 6: CLI
 
 **Files:**
 - Create: `cardmarket_wants/cli.py`
@@ -720,8 +937,8 @@ git commit -m "Add decklist and CSV rendering"
 - Test: `tests/test_cli.py`
 
 **Interfaces:**
-- Consumes: `lorcana.fetch_cards`, `lorcana.DEFAULT_CACHE`, `lorcana.FetchError`, `sets.survey_sets`, `sets.SetInfo`, `selection.select_wants`, `selection.DEFAULT_QUANTITIES`, `selection.CardDataError`, `render.render_decklist`, `render.render_line`, `render.csv_rows`, `render.DEFAULT_SEPARATOR`.
-- Produces: `parse_quantities(text: str) -> dict[str, int]`, `txt_path(out_dir: Path, code: str) -> Path`, `csv_path(out_dir: Path, code: str) -> Path`, `classify_sets(set_infos, out_dir, quantities, force=False) -> tuple[list[SetInfo], list[SetInfo], list[SetInfo]]`, and `main(argv: list[str] | None = None) -> int`.
+- Consumes: `lorcana.fetch_cards`, `lorcana.DEFAULT_CACHE`, `lorcana.FetchError`, `config.DEFAULT_CONFIG`, `config.ConfigError`, `config.load_quantities`, `sets.survey_sets`, `sets.SetInfo`, `selection.select_wants`, `selection.DEFAULT_QUANTITIES`, `selection.CardDataError`, `render.render_decklist`, `render.render_line`, `render.csv_rows`, `render.DEFAULT_SEPARATOR`.
+- Produces: `resolve_quantities(config_path: Path, explicit: bool) -> dict[str, int]`, `txt_path(out_dir: Path, code: str) -> Path`, `csv_path(out_dir: Path, code: str) -> Path`, `classify_sets(set_infos, out_dir, quantities, force=False) -> tuple[list[SetInfo], list[SetInfo], list[SetInfo]]`, and `main(argv: list[str] | None = None) -> int`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -733,9 +950,17 @@ import json
 import pytest
 
 from cardmarket_wants import cli
+from cardmarket_wants.selection import DEFAULT_QUANTITIES
 from cardmarket_wants.sets import SetInfo
 
-QUANTITIES = {"common": 1, "rare": 3}
+QUANTITIES = {"common": 1, "rare": 3, "special": 0}
+
+CONFIG = """
+[quantities]
+common = 1
+rare = 3
+special = 0
+"""
 
 
 def card(set_code, number, rarity, name, title=""):
@@ -761,34 +986,36 @@ def cached(tmp_path):
     return cache
 
 
-def run(cached, out_dir, *extra):
-    return cli.main(["--cache", str(cached), "--out-dir", str(out_dir), *extra])
+@pytest.fixture
+def config(tmp_path):
+    path = tmp_path / "wants.toml"
+    path.write_text(CONFIG, encoding="utf-8")
+    return path
 
 
-# --- parse_quantities ---------------------------------------------------
+def run(cached, config, out_dir, *extra):
+    return cli.main(
+        ["--cache", str(cached), "--config", str(config), "--out-dir", str(out_dir), *extra]
+    )
 
 
-def test_parse_quantities_reads_pairs():
-    assert cli.parse_quantities("common=1,rare=3") == {"common": 1, "rare": 3}
+# --- resolve_quantities -------------------------------------------------
 
 
-def test_parse_quantities_tolerates_whitespace_and_case():
-    assert cli.parse_quantities(" Common = 1 , SUPER_RARE=4 ") == {"common": 1, "super_rare": 4}
+def test_resolve_quantities_reads_the_config_file(config):
+    assert cli.resolve_quantities(config, explicit=True) == QUANTITIES
 
 
-def test_parse_quantities_rejects_a_missing_equals():
-    with pytest.raises(ValueError, match="rarity=quantity"):
-        cli.parse_quantities("common")
+def test_resolve_quantities_falls_back_when_the_default_file_is_absent(tmp_path, capsys):
+    quantities = cli.resolve_quantities(tmp_path / "wants.toml", explicit=False)
+
+    assert quantities == DEFAULT_QUANTITIES
+    assert "built-in defaults" in capsys.readouterr().out
 
 
-def test_parse_quantities_rejects_a_non_numeric_quantity():
-    with pytest.raises(ValueError, match="whole number"):
-        cli.parse_quantities("common=lots")
-
-
-def test_parse_quantities_rejects_an_empty_map():
-    with pytest.raises(ValueError, match="no quantities"):
-        cli.parse_quantities("  ")
+def test_resolve_quantities_raises_when_an_explicit_file_is_absent(tmp_path):
+    with pytest.raises(cli.ConfigError, match="no configuration file"):
+        cli.resolve_quantities(tmp_path / "typo.toml", explicit=True)
 
 
 # --- classify_sets ------------------------------------------------------
@@ -830,22 +1057,29 @@ def test_classify_sets_never_reclaims_an_empty_set_even_with_force(tmp_path):
     assert [i.code for i in empty] == ["p1"]
 
 
+def test_classify_sets_treats_a_zero_quantity_as_nothing_to_generate(tmp_path):
+    # "special" is present in QUANTITIES at 0, which must not make p1 pending.
+    _, _, empty = cli.classify_sets([SetInfo("p1", {"special": 1})], tmp_path, QUANTITIES)
+
+    assert [i.code for i in empty] == ["p1"]
+
+
 # --- main ---------------------------------------------------------------
 
 
-def test_main_writes_a_file_per_qualifying_set(cached, tmp_path):
+def test_main_writes_a_file_per_qualifying_set(cached, config, tmp_path):
     out = tmp_path / "out"
 
-    assert run(cached, out, "--quantities", "common=1,rare=3") == 0
+    assert run(cached, config, out) == 0
     assert cli.txt_path(out, "atv").read_text(encoding="utf-8") == (
         "3 Woody - Helping a Friend\n1 Piercing Attack\n"
     )
     assert cli.txt_path(out, "wun").exists()
 
 
-def test_main_writes_the_audit_csv(cached, tmp_path):
+def test_main_writes_the_audit_csv(cached, config, tmp_path):
     out = tmp_path / "out"
-    run(cached, out, "--quantities", "common=1,rare=3")
+    run(cached, config, out)
 
     lines = cli.csv_path(out, "atv").read_text(encoding="utf-8").splitlines()
 
@@ -853,70 +1087,87 @@ def test_main_writes_the_audit_csv(cached, tmp_path):
     assert lines[1] == "1,Woody,Helping a Friend,rare,3"
 
 
-def test_main_writes_nothing_for_a_set_with_no_qualifying_rarities(cached, tmp_path):
+def test_main_writes_nothing_for_a_set_whose_rarities_are_all_zero(cached, config, tmp_path):
     out = tmp_path / "out"
-    run(cached, out, "--quantities", "common=1,rare=3")
+    run(cached, config, out)
 
     assert not cli.txt_path(out, "p1").exists()
     assert not cli.csv_path(out, "p1").exists()
 
 
-def test_main_leaves_an_existing_file_untouched(cached, tmp_path, capsys):
+def test_main_leaves_an_existing_file_untouched(cached, config, tmp_path, capsys):
     out = tmp_path / "out"
     out.mkdir()
     cli.txt_path(out, "atv").write_text("hand written\n", encoding="utf-8")
 
-    assert run(cached, out, "--quantities", "common=1,rare=3") == 0
+    assert run(cached, config, out) == 0
     assert cli.txt_path(out, "atv").read_text(encoding="utf-8") == "hand written\n"
     assert "already generated" in capsys.readouterr().out
 
 
-def test_main_force_overwrites_an_existing_file(cached, tmp_path):
+def test_main_force_overwrites_an_existing_file(cached, config, tmp_path):
     out = tmp_path / "out"
     out.mkdir()
     cli.txt_path(out, "atv").write_text("hand written\n", encoding="utf-8")
 
-    assert run(cached, out, "--quantities", "common=1,rare=3", "--force") == 0
+    assert run(cached, config, out, "--force") == 0
     assert "Woody" in cli.txt_path(out, "atv").read_text(encoding="utf-8")
 
 
-def test_main_previews_the_first_lines_of_each_generated_set(cached, tmp_path, capsys):
-    run(cached, tmp_path / "out", "--quantities", "common=1,rare=3")
+def test_main_previews_the_first_lines_of_each_generated_set(cached, config, tmp_path, capsys):
+    run(cached, config, tmp_path / "out")
 
     assert "3 Woody - Helping a Friend" in capsys.readouterr().out
 
 
-def test_main_honours_a_custom_separator(cached, tmp_path):
+def test_main_honours_a_custom_separator(cached, config, tmp_path):
     out = tmp_path / "out"
-    run(cached, out, "--quantities", "common=1,rare=3", "--separator", " | ")
+    run(cached, config, out, "--separator", " | ")
 
     assert "3 Woody | Helping a Friend\n" in cli.txt_path(out, "atv").read_text(encoding="utf-8")
 
 
-def test_main_rejects_a_malformed_quantity_map(cached, tmp_path, capsys):
-    assert run(cached, tmp_path / "out", "--quantities", "common") == 2
-    assert "rarity=quantity" in capsys.readouterr().err
+def test_main_respects_edited_quantities(cached, tmp_path):
+    # Switching a rarity on in the config must change the output.
+    edited = tmp_path / "edited.toml"
+    edited.write_text("[quantities]\ncommon = 0\nrare = 1\n", encoding="utf-8")
+    out = tmp_path / "out"
+
+    run(cached, edited, out)
+
+    assert cli.txt_path(out, "atv").read_text(encoding="utf-8") == "1 Woody - Helping a Friend\n"
 
 
-def test_main_reports_unreachable_data_with_no_cache(tmp_path, monkeypatch, capsys):
+def test_main_rejects_a_missing_explicit_config(cached, tmp_path, capsys):
+    assert run(cached, tmp_path / "typo.toml", tmp_path / "out") == 2
+    assert "no configuration file" in capsys.readouterr().err
+
+
+def test_main_rejects_a_malformed_config(cached, tmp_path, capsys):
+    broken = tmp_path / "broken.toml"
+    broken.write_text("[quantities]\ncommon = -1\n", encoding="utf-8")
+
+    assert run(cached, broken, tmp_path / "out") == 2
+    assert "zero or a positive whole number" in capsys.readouterr().err
+
+
+def test_main_reports_unreachable_data_with_no_cache(config, tmp_path, monkeypatch, capsys):
     def fail(*args, **kwargs):
         raise OSError("no route to host")
 
     monkeypatch.setattr(cli.urllib.request, "urlopen", fail)
 
-    assert cli.main(["--cache", str(tmp_path / "missing.json"), "--out-dir", str(tmp_path)]) == 1
+    assert run(tmp_path / "missing.json", config, tmp_path / "out") == 1
     assert "error:" in capsys.readouterr().err
 
 
-def test_main_keeps_going_and_fails_loudly_when_one_set_is_broken(tmp_path, capsys):
+def test_main_keeps_going_and_fails_loudly_when_one_set_is_broken(config, tmp_path, capsys):
     cache = tmp_path / "cards.json"
     broken = CARDS + [{"variants": [{"set": "bad", "id": 1, "rarity": "common"}], "languages": {}}]
     cache.write_text(json.dumps(broken), encoding="utf-8")
     out = tmp_path / "out"
 
-    assert cli.main(
-        ["--cache", str(cache), "--out-dir", str(out), "--quantities", "common=1,rare=3"]
-    ) == 1
+    assert run(cache, config, out) == 1
     assert cli.txt_path(out, "atv").exists()  # the healthy set still generated
     assert "FAILED" in capsys.readouterr().err
 ```
@@ -941,6 +1192,7 @@ import sys
 import urllib.request  # noqa: F401  (imported so tests can patch the network here)
 from pathlib import Path
 
+from .config import DEFAULT_CONFIG, ConfigError, load_quantities
 from .lorcana import DEFAULT_CACHE, FetchError, fetch_cards
 from .render import DEFAULT_SEPARATOR, csv_rows, render_decklist, render_line
 from .selection import DEFAULT_QUANTITIES, CardDataError, select_wants
@@ -949,25 +1201,17 @@ from .sets import SetInfo, survey_sets
 PREVIEW_LINES = 5
 
 
-def parse_quantities(text: str) -> dict[str, int]:
-    """Parse `common=1,rare=3` into a rarity to quantity map."""
-    quantities: dict[str, int] = {}
-    for part in text.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        rarity, equals, value = part.partition("=")
-        if not equals:
-            raise ValueError(f"expected rarity=quantity, got {part!r}")
-        try:
-            quantities[rarity.strip().lower()] = int(value.strip())
-        except ValueError:
-            raise ValueError(
-                f"quantity for {rarity.strip()!r} must be a whole number, got {value.strip()!r}"
-            ) from None
-    if not quantities:
-        raise ValueError("no quantities given")
-    return quantities
+def resolve_quantities(config_path: Path, explicit: bool) -> dict[str, int]:
+    """Load quantities from `config_path`, tolerating only an absent default.
+
+    A missing file the user named is a typo and must be reported. A missing
+    default file just means the tool is being run from outside a checkout, so
+    fall back to the built-in map and say so.
+    """
+    if not explicit and not Path(config_path).exists():
+        print(f"note: no {config_path}, using built-in defaults")
+        return dict(DEFAULT_QUANTITIES)
+    return load_quantities(config_path)
 
 
 def txt_path(out_dir: Path, code: str) -> Path:
@@ -986,15 +1230,16 @@ def classify_sets(
 ) -> tuple[list[SetInfo], list[SetInfo], list[SetInfo]]:
     """Split sets into (to generate, already generated, nothing to generate).
 
-    A set with no rarity in the quantity map yields no file at all — writing an
-    empty one would mark it permanently done and hide a later data fix.
+    A set with no rarity wanted in a non-zero quantity yields no file at all —
+    writing an empty one would mark it permanently done and hide a later data
+    fix or config change.
     """
     pending: list[SetInfo] = []
     existing: list[SetInfo] = []
     empty: list[SetInfo] = []
 
     for info in set_infos:
-        if not any(rarity in quantities for rarity in info.rarity_counts):
+        if not any(quantities.get(rarity, 0) > 0 for rarity in info.rarity_counts):
             empty.append(info)
         elif not force and txt_path(out_dir, info.code).exists():
             existing.append(info)
@@ -1005,12 +1250,16 @@ def classify_sets(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    default_quantities = ",".join(f"{k}={v}" for k, v in DEFAULT_QUANTITIES.items())
     parser = argparse.ArgumentParser(
         prog="cardmarket-wants",
         description="Generate Cardmarket wants-list files for every Lorcana set missing one.",
     )
-    parser.add_argument("--quantities", default=default_quantities, help="rarity=quantity pairs")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help=f"rarity quantity configuration (default: {DEFAULT_CONFIG})",
+    )
     parser.add_argument("--separator", default=DEFAULT_SEPARATOR, help="name/title separator")
     parser.add_argument("--out-dir", type=Path, default=Path("out"), help="output directory")
     parser.add_argument("--cache", type=Path, default=DEFAULT_CACHE, help="card data cache path")
@@ -1023,8 +1272,11 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     try:
-        quantities = parse_quantities(args.quantities)
-    except ValueError as exc:
+        quantities = resolve_quantities(
+            args.config if args.config is not None else DEFAULT_CONFIG,
+            explicit=args.config is not None,
+        )
+    except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -1089,12 +1341,12 @@ raise SystemExit(main())
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python -m pytest tests/test_cli.py -v`
-Expected: PASS, 18 tests
+Expected: PASS, 19 tests
 
 - [ ] **Step 5: Run the whole suite**
 
 Run: `python -m pytest -v`
-Expected: PASS, 50 tests
+Expected: PASS, 64 tests
 
 - [ ] **Step 6: Commit**
 
@@ -1105,7 +1357,7 @@ git commit -m "Add CLI that generates a wants list for every missing set"
 
 ---
 
-### Task 6: Real-data regression guard, README, and a live run
+### Task 7: Real-data regression guard, README, and a live run
 
 **Files:**
 - Create: `tests/test_real_data.py`
@@ -1209,7 +1461,7 @@ Expected: `0 generated, 14 existing, 9 skipped; 0 cards, 0 copies`, no download 
 - [ ] **Step 5: Run the full suite now that a cache exists**
 
 Run: `python -m pytest -v`
-Expected: PASS, 54 tests — the four real-data tests now run instead of skipping.
+Expected: PASS, 68 tests — the four real-data tests now run instead of skipping.
 
 - [ ] **Step 6: Write the README**
 
@@ -1241,18 +1493,37 @@ Output lands in `out/`:
 
 ## Quantities
 
-One of each common, two of each uncommon, three of each rare, four of each super rare and legendary. Secret rarities (epic,
-enchanted, iconic) are excluded. Override with:
+Edit `wants.toml`. Every rarity is listed, with the ones you don't collect set to `0`:
+
+```toml
+[quantities]
+common = 1
+uncommon = 2
+rare = 3
+super_rare = 4
+legendary = 4
+
+epic = 0
+enchanted = 0
+iconic = 0
+```
+
+`0` means excluded, so wanting one of each Epic is changing `epic = 0` to `epic = 1`. A rarity missing from the file is treated
+as `0` too, which is why a rarity added in a future set can't break a run.
+
+After changing quantities, regenerate:
 
 ```bash
-python -m cardmarket_wants --quantities common=1,uncommon=1,rare=2,super_rare=2,legendary=2 --force
+python -m cardmarket_wants --force
 ```
+
+Keep a second file for a different collector and point at it with `--config theirs.toml`.
 
 ## Options
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--quantities` | `common=1,uncommon=2,rare=3,super_rare=4,legendary=4` | Rarity to quantity map |
+| `--config` | `wants.toml` | Rarity quantity configuration |
 | `--separator` | `" - "` | Separator between a card's name and its version subtitle |
 | `--out-dir` | `out` | Where files are written |
 | `--cache` | `.cache/lorcana-cards.json` | Card data cache |

@@ -75,10 +75,37 @@ Against live data on 2026-08-16 this produces **14 files** covering 2,671 cards 
 
 ## Rarity handling
 
-Only rarities present in the quantity map produce lines. Everything else is silently out of scope. That covers the secret
-rarities (`epic`, `enchanted`, `iconic`) and also the odd ones that exist in real data — `special`, `unreleased`, `challenge24`,
-`top1`. An unrecognised rarity is not an error: the data set is a moving target and a new rarity appearing must not stop the
-other sets from generating.
+Quantities live in `wants.toml`, a committed configuration file, so changing what you collect never means editing code:
+
+```toml
+[quantities]
+common = 1
+uncommon = 2
+rare = 3
+super_rare = 4
+legendary = 4
+
+# Secret rarities — the chase cards.
+epic = 0
+enchanted = 0
+iconic = 0
+
+# Promo, collection and event-only rarities.
+special = 0
+unreleased = 0
+challenge24 = 0
+top1 = 0
+```
+
+Unwanted rarities are listed at `0` rather than omitted. That makes the full rarity vocabulary visible and turns "actually, one
+of each Epic" into a one-character edit. It also means the file doubles as documentation of what rarities exist.
+
+`0` means excluded, and a rarity absent from the file is excluded too. So an unrecognised rarity is never an error: the card
+data is a moving target, and a rarity appearing in a future set must not stop the other sets from generating.
+
+`--config PATH` points at a different file — a second quantity set for another collector. A missing file at that explicit path
+is an error, since it is almost always a typo; a missing `wants.toml` falls back to the built-in defaults with a notice, so the
+tool still works when run from outside a checkout.
 
 ## Output format
 
@@ -117,6 +144,7 @@ multiple values allowed per item) if API access is ever obtained.
 cardmarket_wants/
 ├── __main__.py     # python -m cardmarket_wants
 ├── lorcana.py      # fetch /cards with on-disk cache — the only network I/O
+├── config.py       # read wants.toml → rarity quantity map
 ├── sets.py         # survey card data → set codes with per-rarity counts
 ├── selection.py    # set filter + rarity→quantity map → list[Want]
 ├── render.py       # Want → decklist line
@@ -144,7 +172,7 @@ only real logic is deciding which sets are missing, which is a pure comparison o
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--quantities` | `common=1,uncommon=2,rare=3,super_rare=4,legendary=4` | Rarity→quantity map |
+| `--config` | `wants.toml` | Rarity→quantity configuration file |
 | `--separator` | `" - "` | Name/title separator |
 | `--out-dir` | `out/` | Output directory |
 | `--force` | off | Regenerate sets that already have files |
