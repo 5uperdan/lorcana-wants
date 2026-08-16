@@ -114,7 +114,8 @@ multiple values allowed per item) if API access is ever obtained.
 ## Architecture
 
 ```
-src/cardmarket_wants/
+cardmarket_wants/
+├── __main__.py     # python -m cardmarket_wants
 ├── lorcana.py      # fetch /cards with on-disk cache — the only network I/O
 ├── sets.py         # survey card data → set codes with per-rarity counts
 ├── selection.py    # set filter + rarity→quantity map → list[Want]
@@ -125,7 +126,9 @@ src/cardmarket_wants/
 `Want` is a small record: collector number, name, title, rarity, quantity.
 
 Runtime dependencies: none. Python 3.11+ standard library only (`urllib.request` for the fetch, `csv`, `argparse`,
-`dataclasses`), so the tool runs from a clean checkout with no install step. `pytest` is the only development dependency.
+`dataclasses`), so the tool runs from a clean checkout with no install step: `python -m cardmarket_wants`. The package sits at
+the repository root rather than under `src/` precisely to keep that true — a `src/` layout needs an install or a `PYTHONPATH`
+to import. `pytest` is the only development dependency.
 
 The boundaries: `sets`, `selection` and `render` are pure functions over plain data and carry the logic worth testing. `lorcana`
 is isolated so that everything else is testable without a network. With no prompt anywhere, `cli` is fully testable too — its
