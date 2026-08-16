@@ -19,8 +19,8 @@ Generate a Cardmarket wants list for the Disney Lorcana set *Attack of the Vine!
 
 Epic (18), Enchanted (18) and Iconic (2) — the set's secret rarities — are out of scope.
 
-The tool is set-agnostic: it prompts for which set to generate. Attack of the Vine! is the first target and the worked example
-throughout this document.
+The tool is set-agnostic and non-interactive: one run generates a file for every Lorcana set that doesn't already have one.
+Attack of the Vine! is the immediate need and the worked example throughout this document.
 
 ## Key decision: file output, not the Cardmarket API
 
@@ -38,9 +38,9 @@ file. The user pastes it into **Buying → My Wants → [list] → paste field �
 `GET https://api-lorcana.com/cards` returns all 2,477 cards (~6.4 MB) with no query parameters; filtering happens client-side.
 
 Its [OpenAPI spec](https://api-lorcana.com/openapi.json) also offers `GET /set/{set}`, which returns just one set. We use
-`/cards` anyway, for two reasons: the set picker needs to know which sets exist, and deriving that from the card data itself is
-more robust than parsing the set list out of the prose parameter description in the OpenAPI document. One cached 6.4 MB download
-serves both the picker and the generation, and every subsequent run is offline.
+`/cards` anyway, for two reasons: the tool needs to know which sets exist in order to generate all of them, and deriving that
+from the card data itself is more robust than parsing the set list out of the prose parameter description in the OpenAPI
+document. One cached 6.4 MB download covers every set in a single run, and every subsequent run is offline.
 
 Fields used, per card:
 
@@ -53,34 +53,32 @@ Verified against live data on 2026-08-16: 207 matching cards, 453 copies, rarity
 
 The response is cached to disk so repeated runs and tests don't re-download 6.4 MB.
 
-## Set selection
+## Set discovery and idempotent generation
 
-On startup, with no `--set` given, the tool lists the sets present in the card data and prompts for one:
+The tool is non-interactive. One download of the card data, then for every set found in it: if an output file already exists,
+skip; otherwise generate. Re-running is therefore cheap and safe, and a new Lorcana set is picked up simply by running it again.
 
-```
-Available sets:
+- **Existence check.** `out/<set>-wants.txt` is the marker. Its presence means that set is done.
+- **Sets with nothing to generate are skipped, not written.** Promo and collection sets (`p1`–`p4`, `c1`, `c2`, `d23`,
+  `worlds`, `pd1`) carry only rarities outside the quantity map, so they yield zero lines. Writing empty files for them would
+  mark them permanently done and hide a future data fix, so they are reported as skipped each run instead.
+- **Set codes come from the card data** and are used lowercase in filenames (`atv`, `rotf`). Matching against existing files is
+  case-insensitive, since the API is inconsistent with itself: card records carry `atv` while its `/set/{set}` endpoint expects
+  `AtV`.
+- `--force` regenerates everything, ignoring existing files. Needed when the quantity map or the line format changes. It costs
+  nothing beyond CPU, since the card data is cached.
+- `out/` stays gitignored. The generated files are build output, not source, and a fresh clone rebuilds all of them
+  deterministically from one download. The "already generated" check is therefore local state, which is the intent — it tracks
+  what *this* machine has produced.
 
-  1. AtV    207 cards   (common 72, uncommon 54, rare 51, super_rare 18, legendary 12, epic 18, enchanted 18, iconic 2)
-  2. Wun    242 cards   (...)
-  3. Whi    242 cards   (...)
-  ...
+Against live data on 2026-08-16 this produces **14 files** covering 2,671 cards and 5,827 copies, and skips 9 promo sets.
 
-Which set? [1-23]:
-```
+## Rarity handling
 
-Details:
-
-- Sets are listed newest-first, using the highest collector-number block or data order as the ordering signal, so the set you
-  most likely want is at the top.
-- The code shown is the API's canonical casing (`AtV`, `RotF`, `ItI`), taken from the OpenAPI set list where it matches, falling
-  back to the raw code from the card data. The API is inconsistent here — card records carry `atv`, the endpoint expects `AtV` —
-  so all matching is case-insensitive.
-- The per-rarity breakdown is shown because it is what determines the output size, and because it immediately reveals promo and
-  collection sets (`P1`, `D23`, `Worlds`), whose cards carry only the `special` rarity and therefore produce nothing under the
-  quantity map.
-- `--set CODE` skips the prompt entirely, which keeps the tool scriptable and keeps tests non-interactive. An invalid code fails
-  with the list of valid ones rather than dropping into a prompt.
-- Selecting a set with no cards matching the quantity map fails with a clear message naming the rarities that set actually has.
+Only rarities present in the quantity map produce lines. Everything else is silently out of scope. That covers the secret
+rarities (`epic`, `enchanted`, `iconic`) and also the odd ones that exist in real data — `special`, `unreleased`, `challenge24`,
+`top1`. An unrecognised rarity is not an error: the data set is a moving target and a new rarity appearing must not stop the
+other sets from generating.
 
 ## Output format
 
@@ -118,10 +116,10 @@ multiple values allowed per item) if API access is ever obtained.
 ```
 src/cardmarket_wants/
 ├── lorcana.py      # fetch /cards with on-disk cache — the only network I/O
-├── sets.py         # survey card data → available sets with per-rarity counts
+├── sets.py         # survey card data → set codes with per-rarity counts
 ├── selection.py    # set filter + rarity→quantity map → list[Want]
 ├── render.py       # Want → decklist line
-└── cli.py          # argparse, the set prompt, orchestration, file writing
+└── cli.py          # argparse, which-sets-are-missing logic, orchestration, file writing
 ```
 
 `Want` is a small record: collector number, name, title, rarity, quantity.
@@ -130,50 +128,57 @@ Runtime dependencies: none. Python 3.11+ standard library only (`urllib.request`
 `dataclasses`), so the tool runs from a clean checkout with no install step. `pytest` is the only development dependency.
 
 The boundaries: `sets`, `selection` and `render` are pure functions over plain data and carry the logic worth testing. `lorcana`
-is isolated so that everything else is testable without a network. `cli` holds the only interactive code — the set prompt — and
-does no logic beyond wiring, so the prompt is the one piece tests exercise through `--set` instead.
+is isolated so that everything else is testable without a network. With no prompt anywhere, `cli` is fully testable too — its
+only real logic is deciding which sets are missing, which is a pure comparison of discovered codes against directory contents.
 
 ### Outputs
 
 - `out/<set>-wants.txt` — the paste-ready file, e.g. `out/atv-wants.txt` with its 207 lines
 - `out/<set>-wants.csv` — collector number, name, title, rarity, quantity — audit trail, and the input for Phase 2 pricing
-- stdout — per-rarity counts and total copies
+- stdout — one line per set (generated with counts, skipped as existing, or skipped as having nothing to generate), then totals
 
 ### CLI flags
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--set` | prompt | Lorcana set code, case-insensitive; skips the interactive picker |
 | `--quantities` | `common=1,uncommon=2,rare=3,super_rare=4,legendary=4` | Rarity→quantity map |
 | `--separator` | `" - "` | Name/title separator |
-| `--sample N` | none | Emit only the first N lines, for a format smoke test |
-| `--chunk N` | none | Split output into N-line files if the paste field rejects 207 at once |
 | `--out-dir` | `out/` | Output directory |
-| `--refresh` | off | Bypass the cache |
+| `--force` | off | Regenerate sets that already have files |
+| `--refresh` | off | Bypass the card-data cache and re-download |
+
+There is deliberately no `--set`, no `--sample` and no `--chunk`. Regenerating one set means deleting its file and re-running.
+A sample file would be indistinguishable from a real one and would mark the set done while holding five lines, so the smoke
+test below reads from stdout instead.
 
 ## Verification
 
-Before pasting all 207 lines, run with `--sample 5` and paste those first. Cardmarket reports results in three categories —
-added, not added (no match), and already present — so an unmatched line is visible immediately and the format can be corrected
-before the bulk paste.
+Before pasting a full file, paste the first five lines. The tool prints those for each set it generates, so no separate sample
+file is needed. Cardmarket reports results in three categories — added, not added (no match), and already present — so an
+unmatched line is visible immediately and the format can be corrected before the bulk paste.
 
 ### Tests
 
 pytest, no network. A trimmed JSON fixture (a handful of cards spanning every rarity, one titleless, one from a different set)
 drives:
 
-- `sets`: sets discovered from card data, per-rarity counts correct, case-insensitive lookup, unknown code rejected
-- `selection`: correct set filtering, correct quantity per rarity, excluded rarities absent, sorted by collector number
+- `sets`: sets discovered from card data, per-rarity counts correct
+- `selection`: correct set filtering, correct quantity per rarity, excluded and unrecognised rarities absent rather than fatal,
+  sorted by collector number
 - `render`: titled and titleless lines, custom separator, non-ASCII name passed through unchanged
-- a count assertion against the real set totals (207 / 453) as a regression guard
+- `cli`: a set with an existing file is skipped, a set without one is generated, `--force` overrides both, a set with no
+  qualifying rarities writes no file at all
+- a count assertion against the real Attack of the Vine! totals (207 lines / 453 copies) as a regression guard
 
 ## Error handling
 
-- Network failure or non-200 from api-lorcana.com: fail with a clear message; suggest the cached copy if one exists.
+- Network failure or non-200 from api-lorcana.com: fall back to the cache if one exists and say so; fail with a clear message
+  if not.
 - Unexpected payload shape (missing `languages.en`, missing `variants`): report the offending card and abort rather than emit a
   silently wrong list — a wrong wants list costs money.
-- Unknown rarity in the set: report it and abort, since it means the set data changed and the quantity map is incomplete.
-- Empty result for the requested set code: fail loudly with the list of set codes actually present.
+- Unrecognised rarity: not an error. See Rarity handling above.
+- A set that yields zero lines: no file, a skip line on stdout, and the run continues.
+- Failure generating one set does not abort the others; the set is reported as failed and the exit code is non-zero.
 
 ## Phase 2 — pricing research (not built)
 
