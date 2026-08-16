@@ -6,8 +6,14 @@ const SETS = {
   results: [
     { code: "12", name: "Wilds Unknown", released_at: "2026-05-08" },
     { code: "13", name: "Attack of the Vine!", released_at: "2026-07-17" },
+    // Deliberately dated after set 13, mirroring live data: Lorcast lists
+    // format and promo sets released alongside or after the main set. Ordering
+    // by date alone would select this one and show an empty wants list.
+    { code: "Coconut", name: "Format Coconut", released_at: "2026-07-28" },
   ],
 };
+
+const CARDS_COCONUT = [{ collector_number: "1", name: "A Promo Card", rarity: "Promo" }];
 
 const CARDS_13 = [
   { collector_number: "1", name: "Woody", version: "Helping a Friend", rarity: "Rare" },
@@ -23,6 +29,7 @@ const COLLECTION = fileURLToPath(new URL("./fixtures/collection.csv", import.met
 async function stubLorcast(page) {
   await page.route("**/v0/sets/13/cards", (route) => route.fulfill({ json: CARDS_13 }));
   await page.route("**/v0/sets/12/cards", (route) => route.fulfill({ json: CARDS_12 }));
+  await page.route("**/v0/sets/Coconut/cards", (route) => route.fulfill({ json: CARDS_COCONUT }));
   await page.route("**/v0/sets", (route) => route.fulfill({ json: SETS }));
 }
 
@@ -57,11 +64,21 @@ test("no console errors while doing the normal thing", async ({ page }) => {
   expect(errorsByPage.get(page)).toEqual([]);
 });
 
-test("the newest set is selected first", async ({ page }) => {
+test("the newest numbered set is selected, not a later promo set", async ({ page }) => {
+  // Format Coconut is dated after Attack of the Vine!, so a date-only sort
+  // would land the visitor on a set whose only rarity is Promo — an empty
+  // list with no explanation.
   await page.goto("/");
 
   await expect(page.locator("#sets label").first()).toContainText("Attack of the Vine! (2026)");
   await expect(page.locator("#sets input").first()).toBeChecked();
+  await expect(page.locator("#output")).not.toHaveValue("");
+});
+
+test("promo sets are still reachable, listed after the numbered ones", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.locator("#sets label").last()).toContainText("Format Coconut (2026)");
 });
 
 test("changing a rarity updates the list", async ({ page }) => {

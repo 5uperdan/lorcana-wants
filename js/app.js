@@ -15,7 +15,7 @@ import {
 import { fetchSetCards, fetchSets } from "./lorcast.js";
 import { raritiesInSet } from "./rarities.js";
 import { renderDecklist } from "./render.js";
-import { sortSetsNewestFirst } from "./sets.js";
+import { orderSetsForPicker } from "./sets.js";
 import { computeWants, summarise } from "./wants.js";
 
 const COPIED_MESSAGE_MS = 1500;
@@ -123,7 +123,7 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
 
     let sets;
     try {
-      sets = sortSetsNewestFirst(await fetchSets(fetchImpl));
+      sets = orderSetsForPicker(await fetchSets(fetchImpl));
     } catch (error) {
       setStatus(doc, "sets-status", error.message, true);
       return;
