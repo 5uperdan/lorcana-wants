@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   PARSERS,
+  combineRows,
   normaliseSetNumber,
   ownedForSet,
   parseCsv,
@@ -136,4 +137,28 @@ test("a card with no rows is absent rather than zero-filled", () => {
 
 test("the parser registry exposes the dreamborn parser", () => {
   expect(PARSERS.dreamborn).toBe(parseDreambornCsv);
+});
+
+// --- combineRows --------------------------------------------------------
+
+test("sources are added together, not replaced", () => {
+  const rows = combineRows([
+    { rows: [{ setCode: "13", collectorNumber: "1", variant: "normal", count: 1 }] },
+    { rows: [{ setCode: "13", collectorNumber: "2", variant: "foil", count: 2 }] },
+  ]);
+
+  expect(rows).toHaveLength(2);
+});
+
+test("the same card in two sources adds up", () => {
+  const rows = combineRows([
+    { rows: [{ setCode: "13", collectorNumber: "1", variant: "normal", count: 1 }] },
+    { rows: [{ setCode: "13", collectorNumber: "1", variant: "normal", count: 2 }] },
+  ]);
+
+  expect(ownedForSet(rows, "13").get("1")).toEqual({ normal: 3, foil: 0 });
+});
+
+test("no sources means no rows", () => {
+  expect(combineRows([])).toEqual([]);
 });

@@ -95,6 +95,18 @@ export function parseDreambornCsv(text) {
   return { rows, unparsed };
 }
 
+/**
+ * Every source's rows as one list.
+ *
+ * Sources are added together rather than replacing each other, so somebody
+ * whose collection is split across several Dreamborn collections — some
+ * public, some exported by hand — sees one combined picture. `ownedForSet`
+ * already sums repeated cards, so concatenating is all that is required.
+ */
+export function combineRows(sources) {
+  return sources.flatMap((source) => source.rows);
+}
+
 /** Owned copies for one set, keyed by collector number. */
 export function ownedForSet(rows, setCode) {
   const owned = new Map();

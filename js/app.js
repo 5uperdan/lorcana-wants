@@ -4,14 +4,15 @@
  * driven in a test.
  */
 
-import { ownedForSet, parseDreambornCsv } from "./collection.js";
+import { combineRows, ownedForSet, parseDreambornCsv } from "./collection.js";
+import { fetchCardIndex, loadDreambornCollection } from "./dreamborn.js";
 import {
   readQuantities,
   readSplitSize,
   renderRarityInputs,
   renderSetChoices,
+  renderSources,
   setStatus,
-  showClearCollection,
   showOutput,
 } from "./dom.js";
 import { fetchSetCards, fetchSets } from "./lorcast.js";
@@ -24,9 +25,18 @@ import { computeWants, summarise } from "./wants.js";
 const COPIED_MESSAGE_MS = 1500;
 
 export function createApp({ document: doc, fetchImpl = fetch, clipboard = navigator.clipboard }) {
-  const state = { setCode: null, cards: [], collectionRows: null, unreadable: 0 };
+  const state = { setCode: null, cards: [], sources: [] };
   // Taken from the markup so the wording lives in one place.
   const emptyCollectionMessage = doc.getElementById("collection-status").textContent.trim();
+
+  let nextSourceId = 1;
+  let cardIndex = null;
+
+  /** Fetched at most once, and only when a collection actually needs it. */
+  function getCardIndex() {
+    cardIndex ??= fetchCardIndex(fetchImpl);
+    return cardIndex;
+  }
 
   async function copyToClipboard(text, button) {
     await clipboard.writeText(text);
@@ -37,33 +47,37 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
   }
 
   /**
-   * Say what the loaded collection means for the set on screen.
+   * Say what the combined collections mean for the set on screen.
    *
-   * A file can parse perfectly and still match nothing — promo cards are
-   * numbered like "2/P2" and belong to no numbered set — so "loaded" alone
+   * A source can parse perfectly and still match nothing — promo cards are
+   * numbered like "2/P2" and belong to no numbered set — so a bare "loaded"
    * would let a mismatched file look like a working one.
    */
   function reportCollection() {
-    if (!state.collectionRows) return;
+    if (state.sources.length === 0) {
+      setStatus(doc, "collection-status", emptyCollectionMessage);
+      return;
+    }
 
+    const rows = combineRows(state.sources);
     const numbers = new Set(state.cards.map((card) => card.collectorNumber));
-    const forSet = state.collectionRows.filter((row) => row.setCode === state.setCode);
+    const forSet = rows.filter((row) => row.setCode === state.setCode);
     const unmatched = forSet.filter((row) => !numbers.has(row.collectorNumber)).length;
+    const unreadable = state.sources.reduce((total, source) => total + source.unreadable, 0);
 
     const parts = [
-      `Loaded ${state.collectionRows.length} collection rows`,
+      `${state.sources.length} ${state.sources.length === 1 ? "collection" : "collections"} combined`,
+      `${rows.length} cards`,
       `${forSet.length - unmatched} match this set`,
     ];
     if (unmatched > 0) parts.push(`${unmatched} did not match a card in this set`);
-    if (state.unreadable > 0) parts.push(`${state.unreadable} could not be read`);
+    if (unreadable > 0) parts.push(`${unreadable} could not be read`);
 
     setStatus(doc, "collection-status", `${parts.join(", ")}.`);
   }
 
   function recalculate() {
-    const owned = state.collectionRows
-      ? ownedForSet(state.collectionRows, state.setCode)
-      : new Map();
+    const owned = ownedForSet(combineRows(state.sources), state.setCode);
 
     const wants = computeWants({
       cards: state.cards,
@@ -80,6 +94,71 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
 
     showOutput(doc, parts, summarise(wants), copyToClipboard);
     reportCollection();
+  }
+
+  function addSource(source) {
+    state.sources.push({ id: `source-${nextSourceId}`, unreadable: 0, ...source });
+    nextSourceId += 1;
+    renderSources(doc, state.sources, removeSource);
+    recalculate();
+  }
+
+  function removeSource(id) {
+    state.sources = state.sources.filter((source) => source.id !== id);
+    renderSources(doc, state.sources, removeSource);
+    recalculate();
+  }
+
+  /** Add a CSV export. Returns false if it could not be read. */
+  function addCollectionText(text, name = "Uploaded file") {
+    let parsed;
+    try {
+      parsed = parseDreambornCsv(text);
+    } catch (error) {
+      // Leave the sources already added alone: one bad file must not discard
+      // collections that are working.
+      setStatus(doc, "collection-status", error.message, true);
+      return false;
+    }
+    addSource({ kind: "file", name, rows: parsed.rows, unreadable: parsed.unparsed.length });
+    return true;
+  }
+
+  /** Add a public Dreamborn collection by link. */
+  async function addCollectionLink(input) {
+    const button = doc.getElementById("add-link");
+    button.disabled = true;
+    try {
+      const collection = await loadDreambornCollection(input, fetchImpl, getCardIndex);
+      // Adding the same collection twice would double every count and quietly
+      // shrink the wants list, which looks like working software.
+      if (state.sources.some((source) => source.sourceKey === collection.id)) {
+        setStatus(doc, "collection-status", `"${collection.name}" is already added.`, true);
+        return false;
+      }
+      addSource({
+        sourceKey: collection.id,
+        kind: "link",
+        name: collection.name,
+        rows: collection.rows,
+        unreadable: collection.unresolved,
+      });
+      doc.getElementById("collection-url").value = "";
+      return true;
+    } catch (error) {
+      setStatus(doc, "collection-status", error.message, true);
+      return false;
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function readFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => addCollectionText(String(reader.result), file.name);
+    reader.onerror = () =>
+      setStatus(doc, "collection-status", `${file.name} could not be read.`, true);
+    reader.readAsText(file);
   }
 
   async function selectSet(code) {
@@ -100,50 +179,6 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
     recalculate();
   }
 
-  /**
-   * Split out from the file input so the parse-and-recalculate path is
-   * testable without a FileReader. A bad file keeps the previous collection
-   * rather than silently discarding work.
-   */
-  function loadCollectionText(text) {
-    try {
-      const { rows, unparsed } = parseDreambornCsv(text);
-      state.collectionRows = rows;
-      state.unreadable = unparsed.length;
-    } catch (error) {
-      // Keep whatever was loaded before, so a bad file does not silently
-      // discard a good one — and leave the remove button as it was.
-      setStatus(doc, "collection-status", error.message, true);
-      return;
-    }
-    showClearCollection(doc, true);
-    recalculate();
-  }
-
-  /**
-   * Forget the uploaded collection and go back to wanting the whole set.
-   *
-   * Clearing the file input matters as much as clearing the rows: a file
-   * input fires no change event when the same file is picked again, so
-   * leaving the old filename in place would make re-uploading it do nothing.
-   */
-  function clearCollection() {
-    state.collectionRows = null;
-    state.unreadable = 0;
-    doc.getElementById("collection").value = "";
-    setStatus(doc, "collection-status", emptyCollectionMessage);
-    showClearCollection(doc, false);
-    recalculate();
-  }
-
-  function readFile(file) {
-    const reader = new FileReader();
-    reader.onload = () => loadCollectionText(String(reader.result));
-    reader.onerror = () =>
-      setStatus(doc, "collection-status", "That file could not be read.", true);
-    reader.readAsText(file);
-  }
-
   async function start() {
     for (const id of ["count-normals", "count-foils"]) {
       doc.getElementById(id).addEventListener("change", recalculate);
@@ -152,10 +187,20 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
       radio.addEventListener("change", recalculate);
     }
     doc.getElementById("collection").addEventListener("change", (event) => {
-      const [file] = event.target.files;
-      if (file) readFile(file);
+      for (const file of event.target.files) readFile(file);
+      // Clear it so picking the same file again still fires a change event.
+      event.target.value = "";
     });
-    doc.getElementById("clear-collection").addEventListener("click", clearCollection);
+    doc.getElementById("add-link").addEventListener("click", () => {
+      addCollectionLink(doc.getElementById("collection-url").value);
+    });
+    doc.getElementById("collection-url").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addCollectionLink(event.target.value);
+      }
+    });
+
     let sets;
     try {
       sets = orderSetsForPicker(await fetchSets(fetchImpl));
@@ -167,5 +212,5 @@ export function createApp({ document: doc, fetchImpl = fetch, clipboard = naviga
     if (sets.length > 0) await selectSet(sets[0].code);
   }
 
-  return { start, recalculate, loadCollectionText, clearCollection };
+  return { start, recalculate, addCollectionText, addCollectionLink, removeSource, state };
 }

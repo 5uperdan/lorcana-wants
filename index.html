@@ -68,27 +68,51 @@
       </section>
 
       <section class="panel">
-        <h2>3. Your collection <span class="optional">(optional)</span></h2>
+        <h2>3. Your collections <span class="optional">(optional)</span></h2>
         <p>
-          Upload a Dreamborn CSV export. It needs the columns <code>Set Number</code>,
-          <code>Card Number</code>, <code>Variant</code> and <code>Count</code>:
+          Add as many as you like — <strong>everything you add is combined into one
+          collection</strong>. So if yours is split across several Dreamborn collections, or some
+          are public and some are not, mix links and files freely.
         </p>
-        <pre><code>Set Number,Card Number,Variant,Count,Name,Color,Rarity
+
+        <div class="add-source">
+          <label for="collection-url">Dreamborn collection link</label>
+          <div class="add-row">
+            <input
+              type="url"
+              id="collection-url"
+              placeholder="https://dreamborn.ink/collections/..."
+            />
+            <button id="add-link" type="button">Add link</button>
+          </div>
+          <p class="note">
+            The collection has to be public. Your browser fetches it from Dreamborn directly —
+            nothing is sent to this site.
+          </p>
+        </div>
+
+        <div class="add-source">
+          <label for="collection">Dreamborn CSV export</label>
+          <input type="file" id="collection" accept=".csv,text/csv" multiple />
+          <p class="note">
+            Use a file for any collection you keep private. You can pick several at once. It needs
+            the columns <code>Set Number</code>, <code>Card Number</code>, <code>Variant</code> and
+            <code>Count</code>:
+          </p>
+          <pre><code>Set Number,Card Number,Variant,Count,Name,Color,Rarity
 005,135,normal,2,"Sugar Rush Speedway - Starting Line",Ruby,Rare
 005,32,foil,1,"Amber Chromicon",Amber,Uncommon</code></pre>
-        <div class="upload">
-          <input type="file" id="collection" accept=".csv,text/csv" />
-          <button id="clear-collection" class="secondary" type="button" hidden>
-            Remove collection
-          </button>
         </div>
+
+        <ul id="sources" class="sources"></ul>
+        <p id="collection-status" class="note">
+          No collections added — the list below is the full set.
+        </p>
+
         <div class="variants">
           <label><input type="checkbox" id="count-normals" checked /> Count my normal copies</label>
           <label><input type="checkbox" id="count-foils" checked /> Count my foil copies</label>
         </div>
-        <p id="collection-status" class="note">
-          No collection loaded — the list below is the full set.
-        </p>
       </section>
 
       <section class="panel">

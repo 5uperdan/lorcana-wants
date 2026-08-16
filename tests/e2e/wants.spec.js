@@ -31,6 +31,10 @@ const CARDS_BIG = Array.from({ length: 207 }, (_, index) => ({
 }));
 
 const COLLECTION = fileURLToPath(new URL("./fixtures/collection.csv", import.meta.url));
+const SECOND = fileURLToPath(new URL("./fixtures/second.csv", import.meta.url));
+
+const DREAMBORN = { name: "Linked Collection", cards: { "013-001": 1, "013/hash": 1 } };
+const CARD_INDEX = [{ id: "013/hash", setId: "013", number: "2" }];
 
 /** Intercept at the network layer, so the page still uses its real fetch. */
 async function stubLorcast(page) {
@@ -38,6 +42,8 @@ async function stubLorcast(page) {
   await page.route("**/v0/sets/12/cards", (route) => route.fulfill({ json: CARDS_12 }));
   await page.route("**/v0/sets/Coconut/cards", (route) => route.fulfill({ json: CARDS_COCONUT }));
   await page.route("**/v0/sets", (route) => route.fulfill({ json: SETS }));
+  await page.route("**/api/collections/**", (route) => route.fulfill({ json: DREAMBORN }));
+  await page.route("**/cache/en/cards.json", (route) => route.fulfill({ json: CARD_INDEX }));
 }
 
 /** Type quantities the way a visitor would. Everything starts at 0. */
@@ -139,7 +145,7 @@ test("uploading a collection subtracts what you own", async ({ page }) => {
 
   await page.locator("#collection").setInputFiles(COLLECTION);
 
-  await expect(page.locator("#collection-status")).toContainText("3 collection rows");
+  await expect(page.locator("#collection-status")).toContainText("1 collection combined");
   await expect(page.locator("#outputs textarea").first()).toHaveValue("1 Woody - Helping a Friend");
 });
 
@@ -154,39 +160,115 @@ test("unticking foils stops foils counting toward the target", async ({ page }) 
   await expect(page.locator("#outputs textarea").first()).toHaveValue("2 Woody - Helping a Friend");
 });
 
-test("removing the collection restores the full wants list", async ({ page }) => {
+test("removing a source restores the full wants list", async ({ page }) => {
   await page.goto("/");
   await wantTheUsual(page);
-  await expect(page.locator("#clear-collection")).toBeHidden();
+  await expect(page.locator("#sources li")).toHaveCount(0);
 
   await page.locator("#collection").setInputFiles(COLLECTION);
   await expect(page.locator("#outputs textarea").first()).toHaveValue(
     "1 Woody - Helping a Friend",
   );
-  await expect(page.locator("#clear-collection")).toBeVisible();
+  await expect(page.locator("#sources li")).toHaveCount(1);
 
-  await page.locator("#clear-collection").click();
+  await page.locator("#sources button").click();
 
   await expect(page.locator("#outputs textarea").first()).toHaveValue(
     "3 Woody - Helping a Friend\n1 Piercing Attack",
   );
-  await expect(page.locator("#clear-collection")).toBeHidden();
+  await expect(page.locator("#sources li")).toHaveCount(0);
 });
 
 test("the same file can be uploaded again after removing it", async ({ page }) => {
-  // The real point of clearing the file input: a browser fires no change
-  // event when the same file is chosen twice.
+  // The browser fires no change event when the same file is chosen twice, so
+  // the input has to be cleared after every pick.
   await page.goto("/");
   await wantTheUsual(page);
 
   await page.locator("#collection").setInputFiles(COLLECTION);
-  await page.locator("#clear-collection").click();
+  await page.locator("#sources button").click();
   await page.locator("#collection").setInputFiles(COLLECTION);
 
+  await expect(page.locator("#sources li")).toHaveCount(1);
   await expect(page.locator("#outputs textarea").first()).toHaveValue(
     "1 Woody - Helping a Friend",
   );
-  await expect(page.locator("#collection-status")).toContainText("3 collection rows");
+});
+
+test("several files picked at once are all added together", async ({ page }) => {
+  await page.goto("/");
+  await wantTheUsual(page);
+
+  await page.locator("#collection").setInputFiles([COLLECTION, SECOND]);
+
+  await expect(page.locator("#sources li")).toHaveCount(2);
+  await expect(page.locator("#collection-status")).toContainText("2 collections combined");
+});
+
+test("a Dreamborn link is added as a source and counts toward the total", async ({ page }) => {
+  await page.goto("/");
+  await wantTheUsual(page);
+
+  await page.locator("#collection-url").fill("https://dreamborn.ink/collections/abc123def456");
+  await page.locator("#add-link").click();
+
+  await expect(page.locator("#sources li")).toContainText("Linked Collection");
+  await expect(page.locator(".source-kind")).toHaveText("link");
+  // The link owns Woody once and Piercing Attack once, via a hashed id.
+  await expect(page.locator("#outputs textarea").first()).toHaveValue(
+    "2 Woody - Helping a Friend",
+  );
+});
+
+test("a link and a file combine into one collection", async ({ page }) => {
+  await page.goto("/");
+  await wantTheUsual(page);
+
+  await page.locator("#collection-url").fill("https://dreamborn.ink/collections/abc123def456");
+  await page.locator("#add-link").click();
+  await expect(page.locator("#sources li")).toHaveCount(1);
+  await page.locator("#collection").setInputFiles(COLLECTION);
+
+  await expect(page.locator("#sources li")).toHaveCount(2);
+  await expect(page.locator("#collection-status")).toContainText("2 collections combined");
+  // Woody: 3 wanted, 1 from the link plus 1 normal and 1 foil from the file.
+  await expect(page.locator("#outputs textarea")).toHaveCount(0);
+});
+
+test("pressing Enter in the link box adds it, without a page reload", async ({ page }) => {
+  await page.goto("/");
+  await wantTheUsual(page);
+
+  await page.locator("#collection-url").fill("abc123def456");
+  await page.locator("#collection-url").press("Enter");
+
+  await expect(page.locator("#sources li")).toHaveCount(1);
+});
+
+test("the same collection link cannot be added twice", async ({ page }) => {
+  await page.goto("/");
+  await wantTheUsual(page);
+
+  await page.locator("#collection-url").fill("abc123def456");
+  await page.locator("#add-link").click();
+  await expect(page.locator("#sources li")).toHaveCount(1);
+
+  await page.locator("#collection-url").fill("https://dreamborn.ink/collections/abc123def456");
+  await page.locator("#add-link").click();
+
+  await expect(page.locator("#sources li")).toHaveCount(1);
+  await expect(page.locator("#collection-status")).toContainText(/already added/i);
+});
+
+test("a link that is not a collection is refused with an explanation", async ({ page }) => {
+  await page.goto("/");
+  await wantTheUsual(page);
+
+  await page.locator("#collection-url").fill("https://example.com/nope");
+  await page.locator("#add-link").click();
+
+  await expect(page.locator("#collection-status")).toHaveClass(/error/);
+  await expect(page.locator("#sources li")).toHaveCount(0);
 });
 
 test("the reprint explainer opens on keyboard focus, not only on hover", async ({ page }) => {

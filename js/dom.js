@@ -64,9 +64,37 @@ export function readQuantities(doc) {
   return quantities;
 }
 
-/** The remove button only makes sense once something is loaded. */
-export function showClearCollection(doc, visible) {
-  doc.getElementById("clear-collection").hidden = !visible;
+/**
+ * One row per added collection, each removable on its own.
+ *
+ * Showing them as a list is the point: sources add together, and a list makes
+ * that obvious in a way a single "collection loaded" line never could.
+ */
+export function renderSources(doc, sources, onRemove) {
+  const list = doc.getElementById("sources");
+  list.replaceChildren();
+
+  for (const source of sources) {
+    const item = doc.createElement("li");
+    item.dataset.sourceId = source.id;
+
+    const kind = doc.createElement("span");
+    kind.className = "source-kind";
+    kind.textContent = source.kind === "link" ? "link" : "file";
+
+    const copies = source.rows.reduce((total, row) => total + row.count, 0);
+    const label = doc.createElement("span");
+    label.textContent = `${source.name} — ${source.rows.length} cards, ${copies} copies`;
+
+    const remove = doc.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => onRemove(source.id));
+
+    item.append(kind, label, remove);
+    list.append(item);
+  }
 }
 
 export function setStatus(doc, id, message, isError = false) {

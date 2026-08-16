@@ -8,8 +8,8 @@ import {
   readSplitSize,
   renderRarityInputs,
   renderSetChoices,
+  renderSources,
   setStatus,
-  showClearCollection,
   showOutput,
 } from "../js/dom.js";
 import { INDEX_HTML } from "./helpers/page.js";
@@ -33,7 +33,9 @@ test("the markup contains every element the code looks up", () => {
     "collection-status",
     "count-normals",
     "count-foils",
-    "clear-collection",
+    "collection-url",
+    "add-link",
+    "sources",
     "outputs",
     "summary",
   ]) {
@@ -158,16 +160,61 @@ test("readQuantities treats a blank or negative entry as zero", () => {
   expect(readQuantities(document)).toEqual({ common: 0, rare: 0 });
 });
 
-test("the remove button is hidden until a collection is loaded", () => {
-  expect(document.getElementById("clear-collection").hidden).toBe(true);
+const source = (id, name, kind, rows) => ({ id, name, kind, rows, unreadable: 0 });
+const row = (count) => ({ setCode: "13", collectorNumber: "1", variant: "normal", count });
+
+test("no sources means an empty list", () => {
+  renderSources(document, [], () => {});
+
+  expect(document.querySelectorAll("#sources li")).toHaveLength(0);
 });
 
-test("showClearCollection reveals and hides the remove button", () => {
-  showClearCollection(document, true);
-  expect(document.getElementById("clear-collection").hidden).toBe(false);
+test("each source gets a row showing its name, size and kind", () => {
+  renderSources(
+    document,
+    [source("a", "My Collection", "link", [row(2), row(3)])],
+    () => {},
+  );
 
-  showClearCollection(document, false);
-  expect(document.getElementById("clear-collection").hidden).toBe(true);
+  const item = document.querySelector("#sources li");
+  expect(item.textContent).toContain("My Collection — 2 cards, 5 copies");
+  expect(item.querySelector(".source-kind").textContent).toBe("link");
+});
+
+test("an uploaded file is labelled as a file", () => {
+  renderSources(document, [source("a", "export.csv", "file", [row(1)])], () => {});
+
+  expect(document.querySelector(".source-kind").textContent).toBe("file");
+});
+
+test("several sources are all listed, because they add together", () => {
+  renderSources(
+    document,
+    [source("a", "One", "link", [row(1)]), source("b", "Two", "file", [row(1)])],
+    () => {},
+  );
+
+  expect(document.querySelectorAll("#sources li")).toHaveLength(2);
+});
+
+test("each source has its own remove button reporting its id", () => {
+  const removed = [];
+  renderSources(
+    document,
+    [source("a", "One", "link", [row(1)]), source("b", "Two", "file", [row(1)])],
+    (id) => removed.push(id),
+  );
+
+  document.querySelectorAll("#sources button")[1].click();
+
+  expect(removed).toEqual(["b"]);
+});
+
+test("re-rendering replaces the list rather than appending to it", () => {
+  renderSources(document, [source("a", "One", "link", [row(1)])], () => {});
+  renderSources(document, [source("a", "One", "link", [row(1)])], () => {});
+
+  expect(document.querySelectorAll("#sources li")).toHaveLength(1);
 });
 
 test("setStatus writes the message", () => {

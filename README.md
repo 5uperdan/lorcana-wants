@@ -18,9 +18,17 @@ needs updating for a release.
 
 Your collection file is read in the browser and never uploaded anywhere.
 
-## Collection format
+## Your collections
 
-A Dreamborn CSV export. Four columns are used — `Set Number`, `Card Number`, `Variant`, `Count` — and the rest are ignored:
+Add as many as you like — **everything you add is combined into one collection**. That is the point:
+if your collection is split across several Dreamborn collections, or some are public and some are
+not, you can mix links and files freely and still get one correct wants list.
+
+**Dreamborn link.** Paste a public collection URL (or just its id) and the browser fetches it from
+Dreamborn directly. Nothing is sent to this site.
+
+**CSV export.** Use a file for any collection you keep private. Several can be picked at once. Four
+columns are used — `Set Number`, `Card Number`, `Variant`, `Count` — and the rest are ignored:
 
 ```csv
 Set Number,Card Number,Variant,Count,Name,Color,Rarity
@@ -28,11 +36,19 @@ Set Number,Card Number,Variant,Count,Name,Color,Rarity
 005,32,foil,1,"Amber Chromicon",Amber,Uncommon
 ```
 
-The page reports how many rows it read, how many match the set you picked, and how many did not. Some not matching is normal:
-promo cards use numbers like `2/P2` and belong to no numbered set.
+Each source is listed with its own **Remove** button. The status line reports how many collections
+are combined, how many cards they hold, how many match the set you picked, and how many did not.
+Some not matching is normal: promo cards use numbers like `2/P2` and belong to no numbered set.
 
-**Remove collection** forgets the upload and goes back to wanting the whole set, which is also the way to re-upload a file after
-editing it.
+The same collection cannot be added twice — double counting would shrink the wants list while
+looking like it worked.
+
+### How the link works
+
+Dreamborn keys a collection two ways. Sets 1–9 use the collector number directly (`005-135`), but
+from set 10 the key is an opaque id (`013/<hash>`) that only their published card list can resolve.
+That list is 1.9 MB, so it is fetched lazily — a collection covering only older sets never downloads
+it. Both endpoints are CORS-open, so no proxy or key is needed.
 
 ## Special rarities
 
