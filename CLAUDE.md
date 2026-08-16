@@ -60,8 +60,16 @@ q("Common",1); q("Uncommon",2); q("Rare",3); q("Super_rare",4); q("Legendary",4)
 document.getElementById("summary").textContent;
 ```
 
-To check a Dreamborn link end to end you need a **public** collection. Ask the maintainer for one
-rather than guessing at ids — a private collection fails in a way that looks like a bug in the code.
+To check the Dreamborn link path end to end you need a **public** collection. This one is the
+maintainer's, shared for the purpose, and is the same collection the real-data fixtures came from:
+
+```
+https://dreamborn.ink/collections/HEFnzVzwpuQlvWDzb1KrAO44N2A3
+```
+
+It should load as `My Collection — 2888 cards, 8198 copies`, and with set 13 selected and the
+standard quantities it should leave `201 cards, 438 copies`. A private collection fails in a way
+that looks like a bug in the code, so use a known-public one when diagnosing.
 
 ## Things that have already bitten someone
 
@@ -88,12 +96,33 @@ rather than guessing at ids — a private collection fails in a way that looks l
 
 ## Test data
 
-Fixtures under `tests/e2e/fixtures/` are small and synthetic — a handful of rows, written to make one
-behaviour obvious. **No real collection is committed to this repository**, and the real-data figures
-above were checked by hand rather than pinned in a fixture.
+Two kinds, deliberately:
 
-If you want a real-data regression guard, that is a deliberate decision to take with the maintainer:
-it means committing somebody's collection to a public repo.
+- **`tests/e2e/fixtures/`** — three-row synthetic files, each written to make one behaviour obvious.
+  Use these when adding a behaviour test; a big file makes a failure hard to read.
+- **`tests/fixtures/`** — a real 2,888-card collection, committed with the owner's agreement, driving
+  `tests/real-collection.test.js`. Captured 2026-08-16 and entirely offline.
+
+The real-data guard exists because small fixtures cannot catch quoted names containing commas,
+lettered collector numbers (`4a`–`4e`), promo rows belonging to no numbered set, or cards sharing a
+name across several collector numbers. It pins:
+
+| | |
+|---|---|
+| `collection-export.csv` | the CSV export route |
+| `collection-dreamborn.json` | the API route, trimmed to the `name` and `cards` the code reads |
+| `dreamborn-card-index.json` | only the 652 hashed ids this collection references, not the 1.9 MB list |
+| `lorcast-set-13.json`, `lorcast-set-3.json` | real card lists, slimmed to the four fields used |
+
+Its strongest assertion is that the **CSV route and the API route produce byte-identical output**.
+They are independent readings of one collection, so any divergence is a bug in one of them.
+
+One real difference between the two formats is pinned rather than smoothed over: the CSV files four
+promos (`26/P1`–`29/P1`) under set 3, while the API files them under P1. Neither is a set 3 card, so
+the output is unaffected — but a future change to the joining rules now has to face it deliberately.
+
+**Refreshing the fixtures** means re-capturing all of them together and re-checking the figures,
+since they are cross-asserted. Do not update one in isolation.
 
 ## External APIs
 

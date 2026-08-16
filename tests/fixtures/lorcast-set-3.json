@@ -1,0 +1,1358 @@
+[
+{
+"collector_number": "1",
+"name": "Baloo",
+"version": "von Bruinwald XIII",
+"rarity": "Rare"
+},
+{
+"collector_number": "2",
+"name": "Bernard",
+"version": "Brand-New Agent",
+"rarity": "Rare"
+},
+{
+"collector_number": "3",
+"name": "Chernabog",
+"version": "Evildoer",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "4a",
+"name": "Dalmatian Puppy",
+"version": "Tail Wagger",
+"rarity": "Common"
+},
+{
+"collector_number": "4b",
+"name": "Dalmatian Puppy",
+"version": "Tail Wagger",
+"rarity": "Common"
+},
+{
+"collector_number": "4c",
+"name": "Dalmatian Puppy",
+"version": "Tail Wagger",
+"rarity": "Common"
+},
+{
+"collector_number": "4d",
+"name": "Dalmatian Puppy",
+"version": "Tail Wagger",
+"rarity": "Common"
+},
+{
+"collector_number": "4e",
+"name": "Dalmatian Puppy",
+"version": "Tail Wagger",
+"rarity": "Common"
+},
+{
+"collector_number": "5",
+"name": "Joshua Sweet",
+"version": "The Doctor",
+"rarity": "Common"
+},
+{
+"collector_number": "6",
+"name": "Kida",
+"version": "Atlantean",
+"rarity": "Common"
+},
+{
+"collector_number": "7",
+"name": "Kida",
+"version": "Protector of Atlantis",
+"rarity": "Legendary"
+},
+{
+"collector_number": "8",
+"name": "Lucky",
+"version": "The 15th Puppy",
+"rarity": "Rare"
+},
+{
+"collector_number": "9",
+"name": "Minnie Mouse",
+"version": "Musical Artist",
+"rarity": "Rare"
+},
+{
+"collector_number": "10",
+"name": "Miss Bianca",
+"version": "Rescue Aid Society Agent",
+"rarity": "Common"
+},
+{
+"collector_number": "11",
+"name": "Mr. Snoops",
+"version": "Inept Businessman",
+"rarity": "Common"
+},
+{
+"collector_number": "12",
+"name": "Nani",
+"version": "Protective Sister",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "13",
+"name": "Orville",
+"version": "Ace Pilot",
+"rarity": "Common"
+},
+{
+"collector_number": "14",
+"name": "Patch",
+"version": "Intimidating Pup",
+"rarity": "Common"
+},
+{
+"collector_number": "15",
+"name": "Perdita",
+"version": "Devoted Mother",
+"rarity": "Legendary"
+},
+{
+"collector_number": "16",
+"name": "Piglet",
+"version": "Pooh Pirate Captain",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "17",
+"name": "Pluto",
+"version": "Determined Defender",
+"rarity": "Rare"
+},
+{
+"collector_number": "18",
+"name": "Pluto",
+"version": "Friendly Pooch",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "19",
+"name": "Pongo",
+"version": "Determined Father",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "20",
+"name": "Queen of Hearts",
+"version": "Wonderland Empress",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "21",
+"name": "Rolly",
+"version": "Hungry Pup",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "22",
+"name": "Tinker Bell",
+"version": "Generous Fairy",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "23",
+"name": "Wendy Darling",
+"version": "Talented Sailor",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "24",
+"name": "99 Puppies",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "25",
+"name": "Boss's Orders",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "26",
+"name": "Heal What Has Been Hurt",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "27",
+"name": "Quick Patch",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "28",
+"name": "The Bare Necessities",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "29",
+"name": "Cleansing Rainwater",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "30",
+"name": "Heart of Atlantis",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "31",
+"name": "Wildcat's Wrench",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "32",
+"name": "Never Land",
+"version": "Mermaid Lagoon",
+"rarity": "Common"
+},
+{
+"collector_number": "33",
+"name": "Pride Lands",
+"version": "Pride Rock",
+"rarity": "Rare"
+},
+{
+"collector_number": "34",
+"name": "Tiana's Palace",
+"version": "Jazz Restaurant",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "35",
+"name": "Alice",
+"version": "Tea Alchemist",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "36",
+"name": "Chernabog's Followers",
+"version": "Creatures of Evil",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "37",
+"name": "Diablo",
+"version": "Faithful Pet",
+"rarity": "Common"
+},
+{
+"collector_number": "38",
+"name": "Genie",
+"version": "Supportive Friend",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "39",
+"name": "Hydros",
+"version": "Ice Titan",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "40",
+"name": "Iago",
+"version": "Pretty Polly",
+"rarity": "Common"
+},
+{
+"collector_number": "41",
+"name": "Jafar",
+"version": "Lamp Thief",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "42",
+"name": "Jafar",
+"version": "Striking Illusionist",
+"rarity": "Legendary"
+},
+{
+"collector_number": "43",
+"name": "Lena Sabrewing",
+"version": "Rebellious Teenager",
+"rarity": "Common"
+},
+{
+"collector_number": "44",
+"name": "Magic Broom",
+"version": "Dancing Duster",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "45",
+"name": "Magic Broom",
+"version": "Swift Cleaner",
+"rarity": "Common"
+},
+{
+"collector_number": "46",
+"name": "Magic Broom",
+"version": "The Big Sweeper",
+"rarity": "Common"
+},
+{
+"collector_number": "47",
+"name": "Magic Carpet",
+"version": "Flying Rug",
+"rarity": "Common"
+},
+{
+"collector_number": "48",
+"name": "Magica De Spell",
+"version": "Ambitious Witch",
+"rarity": "Common"
+},
+{
+"collector_number": "49",
+"name": "Magica De Spell",
+"version": "The Midas Touch",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "50",
+"name": "Magica De Spell",
+"version": "Thieving Sorceress",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "51",
+"name": "Maleficent",
+"version": "Mistress of All Evil",
+"rarity": "Legendary"
+},
+{
+"collector_number": "52",
+"name": "Mama Odie",
+"version": "Voice of Wisdom",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "53",
+"name": "Pua",
+"version": "Potbellied Buddy",
+"rarity": "Common"
+},
+{
+"collector_number": "54",
+"name": "Rafiki",
+"version": "Mystical Fighter",
+"rarity": "Rare"
+},
+{
+"collector_number": "55",
+"name": "Stratos",
+"version": "Tornado Titan",
+"rarity": "Rare"
+},
+{
+"collector_number": "56",
+"name": "The Firebird",
+"version": "Force of Destruction",
+"rarity": "Common"
+},
+{
+"collector_number": "57",
+"name": "The Queen",
+"version": "Hateful Rival",
+"rarity": "Common"
+},
+{
+"collector_number": "58",
+"name": "Treasure Guardian",
+"version": "Protector of the Cave",
+"rarity": "Rare"
+},
+{
+"collector_number": "59",
+"name": "Ursula",
+"version": "Sea Witch",
+"rarity": "Rare"
+},
+{
+"collector_number": "60",
+"name": "Bestow a Gift",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "61",
+"name": "It Calls Me",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "62",
+"name": "Last-Ditch Effort",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "63",
+"name": "The Boss is on a Roll",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "64",
+"name": "The Lamp",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "65",
+"name": "The Sorcerer's Hat",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "66",
+"name": "Forbidden Mountain",
+"version": "Maleficent's Castle",
+"rarity": "Common"
+},
+{
+"collector_number": "67",
+"name": "The Queen's Castle",
+"version": "Mirror Chamber",
+"rarity": "Rare"
+},
+{
+"collector_number": "68",
+"name": "The Sorcerer's Tower",
+"version": "Wondrous Workspace",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "69",
+"name": "Cubby",
+"version": "Mighty Lost Boy",
+"rarity": "Common"
+},
+{
+"collector_number": "70",
+"name": "Cursed Merfolk",
+"version": "Ursula's Handiwork",
+"rarity": "Rare"
+},
+{
+"collector_number": "71",
+"name": "Don Karnage",
+"version": "Prince of Pirates",
+"rarity": "Common"
+},
+{
+"collector_number": "72",
+"name": "Flotsam",
+"version": "Riffraff",
+"rarity": "Common"
+},
+{
+"collector_number": "73",
+"name": "Friar Tuck",
+"version": "Priest of Nottingham",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "74",
+"name": "Helga Sinclair",
+"version": "Femme Fatale",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "75",
+"name": "Helga Sinclair",
+"version": "Vengeful Partner",
+"rarity": "Rare"
+},
+{
+"collector_number": "76",
+"name": "Jetsam",
+"version": "Riffraff",
+"rarity": "Common"
+},
+{
+"collector_number": "77",
+"name": "Kit Cloudkicker",
+"version": "Tough Guy",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "78",
+"name": "Lyle Tiberius Rourke",
+"version": "Cunning Mercenary",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "79",
+"name": "Milo Thatch",
+"version": "Clever Cartographer",
+"rarity": "Common"
+},
+{
+"collector_number": "80",
+"name": "Milo Thatch",
+"version": "King of Atlantis",
+"rarity": "Legendary"
+},
+{
+"collector_number": "81",
+"name": "Morph",
+"version": "Space Goo",
+"rarity": "Rare"
+},
+{
+"collector_number": "82",
+"name": "Peter Pan",
+"version": "Lost Boy Leader",
+"rarity": "Rare"
+},
+{
+"collector_number": "83",
+"name": "Prince John",
+"version": "Phony King",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "84",
+"name": "Robin Hood",
+"version": "Daydreamer",
+"rarity": "Rare"
+},
+{
+"collector_number": "85",
+"name": "Shenzi",
+"version": "Hyena Pack Leader",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "86",
+"name": "Sir Hiss",
+"version": "Aggravating Asp",
+"rarity": "Common"
+},
+{
+"collector_number": "87",
+"name": "Skippy",
+"version": "Energetic Rabbit",
+"rarity": "Common"
+},
+{
+"collector_number": "88",
+"name": "Starkey",
+"version": "Devious Pirate",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "89",
+"name": "Stitch",
+"version": "Covert Agent",
+"rarity": "Rare"
+},
+{
+"collector_number": "90",
+"name": "Ursula",
+"version": "Deceiver",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "91",
+"name": "Ursula",
+"version": "Deceiver of All",
+"rarity": "Legendary"
+},
+{
+"collector_number": "92",
+"name": "Wildcat",
+"version": "Mechanic",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "93",
+"name": "Zazu",
+"version": "Steward of the Pride Lands",
+"rarity": "Common"
+},
+{
+"collector_number": "94",
+"name": "Has Set My Heaaaaaaart .\u00a0.\u00a0.",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "95",
+"name": "I Will Find My Way",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "96",
+"name": "Strike a Good Match",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "97",
+"name": "Airfoil",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "98",
+"name": "Robin's Bow",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "99",
+"name": "Starlight Vial",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "100",
+"name": "De Vil Manor",
+"version": "Cruella's Estate",
+"rarity": "Common"
+},
+{
+"collector_number": "101",
+"name": "Fang",
+"version": "River City",
+"rarity": "Rare"
+},
+{
+"collector_number": "102",
+"name": "Kuzco's Palace",
+"version": "Home of the Emperor",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "103",
+"name": "Ariel",
+"version": "Adventurous Collector",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "104",
+"name": "Billy Bones",
+"version": "Keeper of the Map",
+"rarity": "Common"
+},
+{
+"collector_number": "105",
+"name": "Captain Hook",
+"version": "Master Swordsman",
+"rarity": "Rare"
+},
+{
+"collector_number": "106",
+"name": "Della Duck",
+"version": "Unstoppable Mom",
+"rarity": "Common"
+},
+{
+"collector_number": "107",
+"name": "HeiHei",
+"version": "Accidental Explorer",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "108",
+"name": "Hydra",
+"version": "Deadly Serpent",
+"rarity": "Legendary"
+},
+{
+"collector_number": "109",
+"name": "Jim Hawkins",
+"version": "Space Traveler",
+"rarity": "Legendary"
+},
+{
+"collector_number": "110",
+"name": "Jim Hawkins",
+"version": "Thrill Seeker",
+"rarity": "Common"
+},
+{
+"collector_number": "111",
+"name": "Kakamora",
+"version": "Menacing Sailor",
+"rarity": "Common"
+},
+{
+"collector_number": "112",
+"name": "Madame Medusa",
+"version": "The Boss",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "113",
+"name": "Maui",
+"version": "Soaring Demigod",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "114",
+"name": "Maui",
+"version": "Whale",
+"rarity": "Rare"
+},
+{
+"collector_number": "115",
+"name": "Milo Thatch",
+"version": "Spirited Scholar",
+"rarity": "Common"
+},
+{
+"collector_number": "116",
+"name": "Moana",
+"version": "Born Leader",
+"rarity": "Rare"
+},
+{
+"collector_number": "117",
+"name": "Moana",
+"version": "Undeterred Voyager",
+"rarity": "Common"
+},
+{
+"collector_number": "118",
+"name": "Nutsy",
+"version": "Vulture Henchman",
+"rarity": "Common"
+},
+{
+"collector_number": "119",
+"name": "Peter Pan",
+"version": "Never Land Hero",
+"rarity": "Common"
+},
+{
+"collector_number": "120",
+"name": "Peter Pan",
+"version": "Pirate's Bane",
+"rarity": "Rare"
+},
+{
+"collector_number": "121",
+"name": "Prince Eric",
+"version": "Expert Helmsman",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "122",
+"name": "Scroop",
+"version": "Backstabber",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "123",
+"name": "Simba",
+"version": "Scrappy Cub",
+"rarity": "Rare"
+},
+{
+"collector_number": "124",
+"name": "Slightly",
+"version": "Lost Boy",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "125",
+"name": "Stitch",
+"version": "Little Rocket",
+"rarity": "Common"
+},
+{
+"collector_number": "126",
+"name": "Trigger",
+"version": "Not-So-Sharp Shooter",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "127",
+"name": "Webby Vanderquack",
+"version": "Enthusiastic Duck",
+"rarity": "Common"
+},
+{
+"collector_number": "128",
+"name": "Divebomb",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "129",
+"name": "I've Got a Dream",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "130",
+"name": "On Your Feet! Now!",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "131",
+"name": "Voyage",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "132",
+"name": "Maui's Fish Hook",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "133",
+"name": "Sumerian Talisman",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "134",
+"name": "Agrabah",
+"version": "Marketplace",
+"rarity": "Common"
+},
+{
+"collector_number": "135",
+"name": "Jolly Roger",
+"version": "Hook's Ship",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "136",
+"name": "RLS Legacy",
+"version": "Solar Galleon",
+"rarity": "Rare"
+},
+{
+"collector_number": "137",
+"name": "Audrey Ramirez",
+"version": "The Engineer",
+"rarity": "Rare"
+},
+{
+"collector_number": "138",
+"name": "Captain Amelia",
+"version": "First in Command",
+"rarity": "Common"
+},
+{
+"collector_number": "139",
+"name": "Dewey",
+"version": "Showy Nephew",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "140",
+"name": "Flintheart Glomgold",
+"version": "Lone Cheater",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "141",
+"name": "Genie",
+"version": "Cramped in the Lamp",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "142",
+"name": "Gramma Tala",
+"version": "Keeper of Ancient Stories",
+"rarity": "Common"
+},
+{
+"collector_number": "143",
+"name": "Gramma Tala",
+"version": "Spirit of the Ocean",
+"rarity": "Legendary"
+},
+{
+"collector_number": "144",
+"name": "Gyro Gearloose",
+"version": "Gadget Whiz",
+"rarity": "Rare"
+},
+{
+"collector_number": "145",
+"name": "Huey",
+"version": "Savvy Nephew",
+"rarity": "Rare"
+},
+{
+"collector_number": "146",
+"name": "King Louie",
+"version": "Bandleader",
+"rarity": "Common"
+},
+{
+"collector_number": "147",
+"name": "Kit Cloudkicker",
+"version": "Navigator",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "148",
+"name": "Kit Cloudkicker",
+"version": "Spunky Bear Cub",
+"rarity": "Common"
+},
+{
+"collector_number": "149",
+"name": "Louie",
+"version": "Chill Nephew",
+"rarity": "Common"
+},
+{
+"collector_number": "150",
+"name": "Maid Marian",
+"version": "Delightful Dreamer",
+"rarity": "Common"
+},
+{
+"collector_number": "151",
+"name": "Mama Odie",
+"version": "Mystical Maven",
+"rarity": "Rare"
+},
+{
+"collector_number": "152",
+"name": "Pluto",
+"version": "Mickey's Clever Friend",
+"rarity": "Common"
+},
+{
+"collector_number": "153",
+"name": "Rufus",
+"version": "Orphanage Cat",
+"rarity": "Common"
+},
+{
+"collector_number": "154",
+"name": "Scrooge McDuck",
+"version": "Richest Duck in the World",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "155",
+"name": "Scrooge McDuck",
+"version": "Uncle Moneybags",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "156",
+"name": "The Queen",
+"version": "Mirror Seeker",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "157",
+"name": "Tinker Bell",
+"version": "Very Clever Fairy",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "158",
+"name": "Wendy Darling",
+"version": "Authority on Peter Pan",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "159",
+"name": "Distract",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "160",
+"name": "Friend Like Me",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "161",
+"name": "How Far I'll Go",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "162",
+"name": "Repair",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "163",
+"name": "Aurelian Gyrosensor",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "164",
+"name": "Heart of Te Fiti",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "165",
+"name": "Lucky Dime",
+"version": null,
+"rarity": "Legendary"
+},
+{
+"collector_number": "166",
+"name": "Scrooge's Top Hat",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "167",
+"name": "Vault Door",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "168",
+"name": "Belle's House",
+"version": "Maurice's Workshop",
+"rarity": "Rare"
+},
+{
+"collector_number": "169",
+"name": "McDuck Manor",
+"version": "Scrooge's Mansion",
+"rarity": "Common"
+},
+{
+"collector_number": "170",
+"name": "Motunui",
+"version": "Island Paradise",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "171",
+"name": "Chief Tui",
+"version": "Proud of Motunui",
+"rarity": "Common"
+},
+{
+"collector_number": "172",
+"name": "Eeyore",
+"version": "Overstuffed Donkey",
+"rarity": "Common"
+},
+{
+"collector_number": "173",
+"name": "Gustav the Giant",
+"version": "Terror of the Kingdom",
+"rarity": "Rare"
+},
+{
+"collector_number": "174",
+"name": "Hades",
+"version": "Hotheaded Ruler",
+"rarity": "Rare"
+},
+{
+"collector_number": "175",
+"name": "Helga Sinclair",
+"version": "Right-Hand Woman",
+"rarity": "Common"
+},
+{
+"collector_number": "176",
+"name": "John Silver",
+"version": "Greedy Treasure Seeker",
+"rarity": "Rare"
+},
+{
+"collector_number": "177",
+"name": "Kida",
+"version": "Royal Warrior",
+"rarity": "Common"
+},
+{
+"collector_number": "178",
+"name": "Little John",
+"version": "Resourceful Outlaw",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "179",
+"name": "Little John",
+"version": "Robin's Pal",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "180",
+"name": "Lythos",
+"version": "Rock Titan",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "181",
+"name": "Mickey Mouse",
+"version": "Stalwart Explorer",
+"rarity": "Common"
+},
+{
+"collector_number": "182",
+"name": "Mickey Mouse",
+"version": "Trumpeter",
+"rarity": "Legendary"
+},
+{
+"collector_number": "183",
+"name": "Minnie Mouse",
+"version": "Funky Spelunker",
+"rarity": "Common"
+},
+{
+"collector_number": "184",
+"name": "Mr. Smee",
+"version": "Bumbling Mate",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "185",
+"name": "Mufasa",
+"version": "Champion of the Pride Lands",
+"rarity": "Rare"
+},
+{
+"collector_number": "186",
+"name": "Nala",
+"version": "Fierce Friend",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "187",
+"name": "Pyros",
+"version": "Lava Titan",
+"rarity": "Rare"
+},
+{
+"collector_number": "188",
+"name": "Razoul",
+"version": "Palace Guard",
+"rarity": "Common"
+},
+{
+"collector_number": "189",
+"name": "Robin Hood",
+"version": "Beloved Outlaw",
+"rarity": "Common"
+},
+{
+"collector_number": "190",
+"name": "Robin Hood",
+"version": "Champion of Sherwood",
+"rarity": "Legendary"
+},
+{
+"collector_number": "191",
+"name": "Sheriff of Nottingham",
+"version": "Corrupt Official",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "192",
+"name": "Simba",
+"version": "Fighting Prince",
+"rarity": "Super_rare"
+},
+{
+"collector_number": "193",
+"name": "Simba",
+"version": "Rightful King",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "194",
+"name": "Thaddeus E. Klang",
+"version": "Metallic Leader",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "195",
+"name": "And Then Along Came Zeus",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "196",
+"name": "Ba-Boom!",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "197",
+"name": "Olympus Would Be That Way",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "198",
+"name": "Rise of the Titans",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "199",
+"name": "Captain Hook's Rapier",
+"version": null,
+"rarity": "Uncommon"
+},
+{
+"collector_number": "200",
+"name": "Gizmosuit",
+"version": null,
+"rarity": "Common"
+},
+{
+"collector_number": "201",
+"name": "Map of Treasure Planet",
+"version": null,
+"rarity": "Rare"
+},
+{
+"collector_number": "202",
+"name": "Maui's Place of Exile",
+"version": "Hidden Island",
+"rarity": "Rare"
+},
+{
+"collector_number": "203",
+"name": "Nottingham",
+"version": "Prince John's Castle",
+"rarity": "Common"
+},
+{
+"collector_number": "204",
+"name": "The Bayou",
+"version": "Mysterious Swamp",
+"rarity": "Uncommon"
+},
+{
+"collector_number": "205",
+"name": "Chernabog",
+"version": "Evildoer",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "206",
+"name": "Kida",
+"version": "Protector of Atlantis",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "207",
+"name": "Pride Lands",
+"version": "Pride Rock",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "208",
+"name": "Jafar",
+"version": "Striking Illusionist",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "209",
+"name": "Maleficent",
+"version": "Mistress of All Evil",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "210",
+"name": "The Sorcerer's Hat",
+"version": null,
+"rarity": "Enchanted"
+},
+{
+"collector_number": "211",
+"name": "Morph",
+"version": "Space Goo",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "212",
+"name": "Ursula",
+"version": "Deceiver of All",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "213",
+"name": "Kuzco's Palace",
+"version": "Home of the Emperor",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "214",
+"name": "Captain Hook",
+"version": "Master Swordsman",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "215",
+"name": "Peter Pan",
+"version": "Pirate's Bane",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "216",
+"name": "RLS Legacy",
+"version": "Solar Galleon",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "217",
+"name": "Gramma Tala",
+"version": "Spirit of the Ocean",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "218",
+"name": "Scrooge McDuck",
+"version": "Richest Duck in the World",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "219",
+"name": "Belle's House",
+"version": "Maurice's Workshop",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "220",
+"name": "Mickey Mouse",
+"version": "Trumpeter",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "221",
+"name": "Robin Hood",
+"version": "Champion of Sherwood",
+"rarity": "Enchanted"
+},
+{
+"collector_number": "222",
+"name": "And Then Along Came Zeus",
+"version": null,
+"rarity": "Enchanted"
+}
+]

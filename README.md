@@ -107,6 +107,7 @@ to expect, and the mistakes that have already caught people out.
 |---|---|---|---|
 | Unit and DOM | Vitest + jsdom | Every module, including the wiring. Mounts the real `index.html`, so renaming an element id fails the suite rather than the page. | Every push and PR |
 | Browser smoke | Playwright, network stubbed | That the real page boots over HTTP and its main paths work — module loading, file upload, clipboard, keyboard access. | Every push and PR |
+| Real data | Vitest, offline | A real 2,888-card collection through the whole pipeline, both by CSV export and by API, asserting the two agree. | Every push and PR |
 | Contract | Playwright, live | That Lorcast still returns the fields the tool reads. Nothing else would notice a rename, because everything else stubs it. | Weekly, and on demand |
 
 The contract suite is kept off pull requests on purpose: it can fail for reasons that have nothing to do with the change being
